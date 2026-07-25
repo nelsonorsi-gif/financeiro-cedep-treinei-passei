@@ -1,0 +1,109 @@
+:root {
+  font-family:
+    Inter, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: #0f172a;
+  background: #f4f6f8;
+  color-scheme: light;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: #f4f6f8;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+p {
+  margin-top: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  color: #0f172a;
+  background-color: #ffffff;
+  opacity: 1;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+
+button {
+  opacity: 1;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid
+    rgba(37, 99, 235, 0.28);
+  outline-offset: 2px;
+}
+
+.tabela-scroll {
+  scrollbar-width: auto;
+  scrollbar-color:
+    #64748b #e2e8f0;
+}
+
+.tabela-scroll::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.tabela-scroll::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+.tabela-scroll::-webkit-scrollbar-thumb {
+  background: #64748b;
+  border: 3px solid #e2e8f0;
+  border-radius: 999px;
+}
+
+.tabela-scroll::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
