@@ -9,6 +9,7 @@ const CHAVES_COMPARTILHADAS = [
   "financeiro-cedep-contas",
   "financeiro-cedep-configuracoes",
   "financeiro-cedep-cadastros",
+  "financeiro-cedep-escolas",
   "financeiro-cedep-professores",
   "financeiro-cedep-mensalidades",
   "financeiro-cedep-secretaria",
