@@ -4,1723 +4,880 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-
+import * as XLSX from "xlsx";
 import {
   carregarConfiguracoes,
   type ConfiguracoesFinanceiras,
 } from "./Configuracoes";
+import type { UsuarioSessao } from "./Acesso";
 
 export type Conta = {
   id: string;
-
   descricao: string;
-
   valor: number;
-
   vencimento: string;
-
   categoria: string;
-
   banco: string;
-
   unidade: string;
-
   observacao: string;
-
-  status:
-    | "Pendente"
-    | "Pago"
-    | "Recebido";
-
-  tipo:
-    | "receber"
-    | "pagar";
+  status: "Pendente" | "Pago" | "Recebido";
+  tipo: "receber" | "pagar";
+  origem?: "manual" | "mensalidade" | "secretaria" | "escola" | "repasse-escola";
+  criadoPorId?: string;
+  criadoPorNome?: string;
+  criadoPorPerfil?: string;
+  alunoId?: string;
+  alunoNome?: string;
+  criadoEm?: string;
+  atualizadoEm?: string;
+  dataBaixa?: string;
 };
 
 type Props = {
-  tipo:
-    | "receber"
-    | "pagar";
-
-  onBaixar: (
-    conta: Conta
-  ) => void;
+  tipo: "receber" | "pagar";
+  onBaixar: (conta: Conta) => void;
+  usuarioAtual: UsuarioSessao;
 };
 
-export const CHAVE_CONTAS =
-  "financeiro-cedep-contas";
+type SituacaoFiltro =
+  | "Todos"
+  | "Pendentes"
+  | "Vencidos"
+  | "Vencem hoje"
+  | "A vencer"
+  | "Concluídos";
 
-const moeda = (
-  valor: number
-) =>
-  valor.toLocaleString(
-    "pt-BR",
-    {
-      style: "currency",
+type Ordenacao =
+  | "vencimento-asc"
+  | "vencimento-desc"
+  | "valor-desc"
+  | "valor-asc"
+  | "descricao";
 
-      currency: "BRL",
-    }
-  );
+export const CHAVE_CONTAS = "financeiro-cedep-contas";
+const ITENS_POR_PAGINA = 15;
 
-const converterNumero = (
-  valor: string
-) => {
-  let texto = valor
-    .replace("R$", "")
-    .replace(/\s/g, "");
+const moeda = (valor: number) =>
+  valor.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 
-  if (
-    texto.includes(",")
-  ) {
-    texto = texto
-      .replace(/\./g, "")
-      .replace(",", ".");
+const normalizar = (valor: string) =>
+  valor
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const converterNumero = (valor: string) => {
+  let texto = valor.replace("R$", "").replace(/\s/g, "");
+  if (texto.includes(",")) {
+    texto = texto.replace(/\./g, "").replace(",", ".");
   }
-
-  const numero =
-    Number(texto);
-
-  return Number.isFinite(
-    numero
-  )
-    ? numero
-    : 0;
+  const numero = Number(texto);
+  return Number.isFinite(numero) ? numero : 0;
 };
 
-function Contas({
-  tipo,
-  onBaixar,
-}: Props) {
-  const [
-    contas,
-    setContas,
-  ] =
-    useState<Conta[]>([]);
+const hojeISO = () => {
+  const agora = new Date();
+  const deslocamento = agora.getTimezoneOffset() * 60_000;
+  return new Date(agora.getTime() - deslocamento).toISOString().slice(0, 10);
+};
 
-  const [
-    carregado,
-    setCarregado,
-  ] = useState(false);
+const somarDiasISO = (dias: number) => {
+  const data = new Date(`${hojeISO()}T12:00:00`);
+  data.setDate(data.getDate() + dias);
+  return data.toISOString().slice(0, 10);
+};
 
-  const [
-    configuracoes,
-    setConfiguracoes,
-  ] =
-    useState<ConfiguracoesFinanceiras>(
-      carregarConfiguracoes()
-    );
+const formatarData = (data: string) => {
+  if (!data) return "";
+  return new Date(`${data}T00:00:00`).toLocaleDateString("pt-BR");
+};
 
-  const [
-    descricao,
-    setDescricao,
-  ] = useState("");
+const contaConcluida = (conta: Conta) =>
+  conta.status === "Pago" || conta.status === "Recebido";
 
-  const [
-    valor,
-    setValor,
-  ] = useState("");
+const contaVencida = (conta: Conta) =>
+  conta.status === "Pendente" && Boolean(conta.vencimento) && conta.vencimento < hojeISO();
 
-  const [
-    vencimento,
-    setVencimento,
-  ] = useState("");
+const contaMensalidade = (conta: Conta) =>
+  conta.origem === "mensalidade" ||
+  normalizar(conta.categoria).includes("mensalidade") ||
+  normalizar(conta.observacao).includes("aluno:");
 
-  const [
-    categoria,
-    setCategoria,
-  ] = useState("");
+const contaVisivelParaUsuario = (conta: Conta, usuario: UsuarioSessao) => {
+  if (usuario.perfil !== "Secretaria") return true;
+  if (conta.tipo === "receber" && contaMensalidade(conta)) return true;
+  return (
+    conta.criadoPorId === usuario.id ||
+    (conta.origem === "secretaria" && conta.criadoPorNome === usuario.nome)
+  );
+};
 
-  const [
-    banco,
-    setBanco,
-  ] = useState("");
+function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
+  const [contas, setContas] = useState<Conta[]>([]);
+  const [carregado, setCarregado] = useState(false);
+  const [configuracoes, setConfiguracoes] =
+    useState<ConfiguracoesFinanceiras>(carregarConfiguracoes());
 
-  const [
-    unidade,
-    setUnidade,
-  ] = useState("CEDEP");
+  const [descricao, setDescricao] = useState("");
+  const [valor, setValor] = useState("");
+  const [vencimento, setVencimento] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [banco, setBanco] = useState("");
+  const [unidade, setUnidade] = useState("CEDEP");
+  const [observacao, setObservacao] = useState("");
+  const [contaEditando, setContaEditando] = useState<string | null>(null);
 
-  const [
-    observacao,
-    setObservacao,
-  ] = useState("");
-
-  const [
-    contaEditando,
-    setContaEditando,
-  ] =
-    useState<string | null>(
-      null
-    );
-
-  const [
-    filtro,
-    setFiltro,
-  ] = useState("Todos");
-
-  /* =======================================================
-     CARREGAR CONTAS SALVAS
-  ======================================================= */
+  const [busca, setBusca] = useState("");
+  const [situacao, setSituacao] = useState<SituacaoFiltro>("Todos");
+  const [filtroCategoria, setFiltroCategoria] = useState("Todas");
+  const [filtroBanco, setFiltroBanco] = useState("Todos");
+  const [filtroUnidade, setFiltroUnidade] = useState("Todas");
+  const [dataInicial, setDataInicial] = useState("");
+  const [dataFinal, setDataFinal] = useState("");
+  const [somenteMensalidades, setSomenteMensalidades] = useState(false);
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>("vencimento-asc");
+  const [pagina, setPagina] = useState(1);
 
   useEffect(() => {
-    try {
-      const salvas =
-        localStorage.getItem(
-          CHAVE_CONTAS
-        );
-
-      if (salvas) {
-        setContas(
-          JSON.parse(
-            salvas
-          )
-        );
+    const carregar = () => {
+      try {
+        const salvas = localStorage.getItem(CHAVE_CONTAS);
+        setContas(salvas ? JSON.parse(salvas) : []);
+      } catch (erro) {
+        console.error("Erro ao carregar contas:", erro);
+      } finally {
+        setCarregado(true);
       }
-    } catch (erro) {
-      console.error(
-        "Erro ao carregar contas:",
-        erro
-      );
-    } finally {
-      setCarregado(true);
-    }
+    };
+    carregar();
+    window.addEventListener("financeiro-contas-atualizadas", carregar);
+    return () =>
+      window.removeEventListener("financeiro-contas-atualizadas", carregar);
   }, []);
 
-  /* =======================================================
-     SALVAR AUTOMATICAMENTE
-  ======================================================= */
+  useEffect(() => {
+    if (!carregado) return;
+    localStorage.setItem(CHAVE_CONTAS, JSON.stringify(contas));
+  }, [contas, carregado]);
 
   useEffect(() => {
-    if (!carregado) {
+    const atualizar = () => setConfiguracoes(carregarConfiguracoes());
+    window.addEventListener("financeiro-config-atualizada", atualizar);
+    return () =>
+      window.removeEventListener("financeiro-config-atualizada", atualizar);
+  }, []);
+
+  const limparFormulario = () => {
+    setDescricao("");
+    setValor("");
+    setVencimento("");
+    setCategoria("");
+    setBanco("");
+    setUnidade("CEDEP");
+    setObservacao("");
+    setContaEditando(null);
+  };
+
+  const salvarConta = () => {
+    const valorNumerico = converterNumero(valor);
+    if (!descricao.trim()) return alert("Digite uma descrição.");
+    if (valorNumerico <= 0) return alert("Digite um valor válido.");
+    if (!vencimento) return alert("Informe a data de vencimento.");
+    if (!categoria) {
+      return alert(
+        tipo === "receber"
+          ? "Selecione um tipo de entrada."
+          : "Selecione um tipo de saída."
+      );
+    }
+    if (!banco) return alert("Selecione um banco ou conta.");
+    if (!unidade) return alert("Selecione uma unidade.");
+
+    const existente = contas.find((item) => item.id === contaEditando);
+    const agora = new Date().toISOString();
+    const novaConta: Conta = {
+      id: contaEditando ?? `conta-${Date.now()}-${Math.random()}`,
+      descricao: descricao.trim(),
+      valor: valorNumerico,
+      vencimento,
+      categoria,
+      banco,
+      unidade,
+      observacao: observacao.trim(),
+      status: existente?.status ?? "Pendente",
+      tipo,
+      origem:
+        existente?.origem ??
+        (usuarioAtual.perfil === "Secretaria" ? "secretaria" : "manual"),
+      criadoPorId: existente?.criadoPorId ?? usuarioAtual.id,
+      criadoPorNome: existente?.criadoPorNome ?? usuarioAtual.nome,
+      criadoPorPerfil: existente?.criadoPorPerfil ?? usuarioAtual.perfil,
+      criadoEm: existente?.criadoEm ?? agora,
+      atualizadoEm: agora,
+      dataBaixa: existente?.dataBaixa,
+      alunoId: existente?.alunoId,
+      alunoNome: existente?.alunoNome,
+    };
+
+    setContas((atuais) =>
+      contaEditando
+        ? atuais.map((item) => (item.id === contaEditando ? novaConta : item))
+        : [...atuais, novaConta]
+    );
+    limparFormulario();
+    alert(contaEditando ? "Conta atualizada com sucesso." : "Conta cadastrada com sucesso.");
+  };
+
+  const editarConta = (conta: Conta) => {
+    setContaEditando(conta.id);
+    setDescricao(conta.descricao);
+    setValor(String(conta.valor).replace(".", ","));
+    setVencimento(conta.vencimento);
+    setCategoria(conta.categoria);
+    setBanco(conta.banco);
+    setUnidade(conta.unidade);
+    setObservacao(conta.observacao);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const excluirConta = (conta: Conta) => {
+    if (!window.confirm(`Deseja excluir "${conta.descricao}"?`)) return;
+    setContas((atuais) => atuais.filter((item) => item.id !== conta.id));
+  };
+
+  const baixarConta = (conta: Conta) => {
+    if (conta.status !== "Pendente") return;
+    const acao = tipo === "receber" ? "receber" : "pagar";
+    if (
+      !window.confirm(
+        `Confirma ${acao} ${moeda(conta.valor)} referente a "${conta.descricao}"?`
+      )
+    ) {
       return;
     }
-
-    localStorage.setItem(
-      CHAVE_CONTAS,
-      JSON.stringify(
-        contas
-      )
+    const novoStatus = tipo === "receber" ? "Recebido" : "Pago";
+    const atualizada: Conta = {
+      ...conta,
+      status: novoStatus,
+      dataBaixa: hojeISO(),
+      atualizadoEm: new Date().toISOString(),
+    };
+    setContas((atuais) =>
+      atuais.map((item) => (item.id === conta.id ? atualizada : item))
     );
-  }, [
-    contas,
-    carregado,
-  ]);
-
-  /* =======================================================
-     ATUALIZAR CONFIGURAÇÕES
-  ======================================================= */
-
-  useEffect(() => {
-    const atualizarConfiguracoes =
-      () => {
-        setConfiguracoes(
-          carregarConfiguracoes()
-        );
-      };
-
-    window.addEventListener(
-      "financeiro-config-atualizada",
-      atualizarConfiguracoes
-    );
-
-    return () => {
-      window.removeEventListener(
-        "financeiro-config-atualizada",
-        atualizarConfiguracoes
-      );
-    };
-  }, []);
-
-  /* =======================================================
-     LIMPAR FORMULÁRIO
-  ======================================================= */
-
-  const limparFormulario =
-    () => {
-      setDescricao("");
-
-      setValor("");
-
-      setVencimento("");
-
-      setCategoria("");
-
-      setBanco("");
-
-      setUnidade(
-        "CEDEP"
-      );
-
-      setObservacao("");
-
-      setContaEditando(
-        null
-      );
-    };
-
-  /* =======================================================
-     SALVAR CONTA
-  ======================================================= */
-
-  const salvarConta =
-    () => {
-      const valorNumerico =
-        converterNumero(
-          valor
-        );
-
-      if (
-        !descricao.trim()
-      ) {
-        alert(
-          "Digite uma descrição."
-        );
-
-        return;
-      }
-
-      if (
-        valorNumerico <= 0
-      ) {
-        alert(
-          "Digite um valor válido."
-        );
-
-        return;
-      }
-
-      if (!vencimento) {
-        alert(
-          "Informe a data de vencimento."
-        );
-
-        return;
-      }
-
-      if (!categoria) {
-        alert(
-          tipo ===
-          "receber"
-            ? "Selecione um tipo de entrada."
-            : "Selecione um tipo de saída."
-        );
-
-        return;
-      }
-
-      if (!banco) {
-        alert(
-          "Selecione um banco ou conta."
-        );
-
-        return;
-      }
-
-      if (!unidade) {
-        alert(
-          "Selecione uma unidade."
-        );
-
-        return;
-      }
-
-      const novaConta: Conta =
-        {
-          id:
-            contaEditando ??
-            `conta-${Date.now()}-${Math.random()}`,
-
-          descricao:
-            descricao.trim(),
-
-          valor:
-            valorNumerico,
-
-          vencimento,
-
-          categoria,
-
-          banco,
-
-          unidade,
-
-          observacao:
-            observacao.trim(),
-
-          status:
-            "Pendente",
-
-          tipo,
-        };
-
-      if (
-        contaEditando
-      ) {
-        setContas(
-          (atuais) =>
-            atuais.map(
-              (conta) => {
-                if (
-                  conta.id !==
-                  contaEditando
-                ) {
-                  return conta;
-                }
-
-                /*
-                  Mantemos o status anterior.
-                */
-                return {
-                  ...novaConta,
-
-                  status:
-                    conta.status,
-                };
-              }
-            )
-        );
-      } else {
-        setContas(
-          (atuais) => [
-            ...atuais,
-
-            novaConta,
-          ]
-        );
-      }
-
-      const estavaEditando =
-        Boolean(
-          contaEditando
-        );
-
-      limparFormulario();
-
-      alert(
-        estavaEditando
-          ? "Conta atualizada com sucesso."
-          : "Conta cadastrada com sucesso."
-      );
-    };
-
-  /* =======================================================
-     EDITAR CONTA
-  ======================================================= */
-
-  const editarConta =
-    (
-      conta: Conta
-    ) => {
-      setContaEditando(
-        conta.id
-      );
-
-      setDescricao(
-        conta.descricao
-      );
-
-      setValor(
-        String(
-          conta.valor
-        ).replace(
-          ".",
-          ","
-        )
-      );
-
-      setVencimento(
-        conta.vencimento
-      );
-
-      setCategoria(
-        conta.categoria
-      );
-
-      setBanco(
-        conta.banco
-      );
-
-      setUnidade(
-        conta.unidade
-      );
-
-      setObservacao(
-        conta.observacao
-      );
-
-      window.scrollTo({
-        top: 0,
-
-        behavior: "smooth",
-      });
-    };
-
-  /* =======================================================
-     EXCLUIR
-  ======================================================= */
-
-  const excluirConta =
-    (
-      conta: Conta
-    ) => {
-      const confirmar =
-        window.confirm(
-          `Deseja excluir "${conta.descricao}"?`
-        );
-
-      if (!confirmar) {
-        return;
-      }
-
-      setContas(
-        (atuais) =>
-          atuais.filter(
-            (item) =>
-              item.id !==
-              conta.id
-          )
-      );
-    };
-
-  /* =======================================================
-     BAIXAR CONTA
-  ======================================================= */
-
-  const baixarConta =
-    (
-      conta: Conta
-    ) => {
-      if (
-        conta.status !==
-        "Pendente"
-      ) {
-        return;
-      }
-
-      const palavra =
-        tipo ===
-        "receber"
-          ? "receber"
-          : "pagar";
-
-      const confirmar =
-        window.confirm(
-          `Confirma ${palavra} ${moeda(
-            conta.valor
-          )} referente a "${conta.descricao}"?`
-        );
-
-      if (!confirmar) {
-        return;
-      }
-
-      const novoStatus:
-        | "Recebido"
-        | "Pago" =
-        tipo ===
-        "receber"
-          ? "Recebido"
-          : "Pago";
-
-      setContas(
-        (atuais) =>
-          atuais.map(
-            (item) =>
-              item.id ===
-              conta.id
-                ? {
-                    ...item,
-
-                    status:
-                      novoStatus,
-                  }
-                : item
-          )
-      );
-
-      /*
-        Envia para App.tsx
-        para gerar receita ou despesa.
-      */
-      onBaixar({
-        ...conta,
-
-        status:
-          novoStatus,
-      });
-
-      alert(
-        tipo ===
-        "receber"
-          ? "Recebimento confirmado."
-          : "Pagamento confirmado."
-      );
-    };
-
-  /* =======================================================
-     VERIFICAR VENCIMENTO
-  ======================================================= */
-
-  const hoje =
-    new Date();
-
-  hoje.setHours(
-    0,
-    0,
-    0,
-    0
+    onBaixar(atualizada);
+    alert(tipo === "receber" ? "Recebimento confirmado." : "Pagamento confirmado.");
+  };
+
+  const contasPermitidas = useMemo(
+    () =>
+      contas.filter(
+        (conta) =>
+          conta.tipo === tipo && contaVisivelParaUsuario(conta, usuarioAtual)
+      ),
+    [contas, tipo, usuarioAtual]
   );
 
-  const verificarVencida =
-    (
-      conta: Conta
-    ) => {
-      if (
-        conta.status !==
-        "Pendente"
-      ) {
-        return false;
-      }
+  const listas = useMemo(
+    () => ({
+      categorias: Array.from(
+        new Set(contasPermitidas.map((item) => item.categoria).filter(Boolean))
+      ).sort(),
+      bancos: Array.from(
+        new Set(contasPermitidas.map((item) => item.banco).filter(Boolean))
+      ).sort(),
+      unidades: Array.from(
+        new Set(contasPermitidas.map((item) => item.unidade).filter(Boolean))
+      ).sort(),
+    }),
+    [contasPermitidas]
+  );
 
-      const data =
-        new Date(
-          `${conta.vencimento}T00:00:00`
+  const contasFiltradas = useMemo(() => {
+    const termo = normalizar(busca);
+    return contasPermitidas
+      .filter((conta) => {
+        const textoBusca = normalizar(
+          `${conta.descricao} ${conta.observacao} ${conta.alunoNome ?? ""}`
         );
+        const hoje = hojeISO();
+        const correspondeSituacao =
+          situacao === "Todos" ||
+          (situacao === "Pendentes" &&
+            conta.status === "Pendente" &&
+            !contaVencida(conta)) ||
+          (situacao === "Vencidos" && contaVencida(conta)) ||
+          (situacao === "Vencem hoje" &&
+            conta.status === "Pendente" &&
+            conta.vencimento === hoje) ||
+          (situacao === "A vencer" &&
+            conta.status === "Pendente" &&
+            conta.vencimento > hoje) ||
+          (situacao === "Concluídos" && contaConcluida(conta));
 
-      return data < hoje;
-    };
+        return (
+          (!termo || textoBusca.includes(termo)) &&
+          correspondeSituacao &&
+          (filtroCategoria === "Todas" || conta.categoria === filtroCategoria) &&
+          (filtroBanco === "Todos" || conta.banco === filtroBanco) &&
+          (filtroUnidade === "Todas" || conta.unidade === filtroUnidade) &&
+          (!dataInicial || conta.vencimento >= dataInicial) &&
+          (!dataFinal || conta.vencimento <= dataFinal) &&
+          (!somenteMensalidades || contaMensalidade(conta))
+        );
+      })
+      .sort((a, b) => {
+        if (ordenacao === "vencimento-desc")
+          return b.vencimento.localeCompare(a.vencimento);
+        if (ordenacao === "valor-desc") return b.valor - a.valor;
+        if (ordenacao === "valor-asc") return a.valor - b.valor;
+        if (ordenacao === "descricao")
+          return a.descricao.localeCompare(b.descricao, "pt-BR");
+        if (contaConcluida(a) !== contaConcluida(b))
+          return contaConcluida(a) ? 1 : -1;
+        return a.vencimento.localeCompare(b.vencimento);
+      });
+  }, [
+    contasPermitidas,
+    busca,
+    situacao,
+    filtroCategoria,
+    filtroBanco,
+    filtroUnidade,
+    dataInicial,
+    dataFinal,
+    somenteMensalidades,
+    ordenacao,
+  ]);
 
-  /* =======================================================
-     FILTROS E TOTAIS
-  ======================================================= */
+  useEffect(() => setPagina(1), [
+    busca,
+    situacao,
+    filtroCategoria,
+    filtroBanco,
+    filtroUnidade,
+    dataInicial,
+    dataFinal,
+    somenteMensalidades,
+    ordenacao,
+  ]);
 
-  const contasDoTipo =
-    contas.filter(
-      (conta) =>
-        conta.tipo === tipo
-    );
+  const totalPaginas = Math.max(1, Math.ceil(contasFiltradas.length / ITENS_POR_PAGINA));
+  const paginaSegura = Math.min(pagina, totalPaginas);
+  const contasDaPagina = contasFiltradas.slice(
+    (paginaSegura - 1) * ITENS_POR_PAGINA,
+    paginaSegura * ITENS_POR_PAGINA
+  );
 
-  const contasFiltradas =
-    useMemo(() => {
-      return contasDoTipo.filter(
-        (conta) => {
-          if (
-            filtro ===
-            "Todos"
-          ) {
-            return true;
-          }
+  const pendentes = contasPermitidas.filter((item) => item.status === "Pendente");
+  const vencidas = pendentes.filter(contaVencida);
+  const proximos30 = pendentes.filter(
+    (item) => item.vencimento >= hojeISO() && item.vencimento <= somarDiasISO(30)
+  );
+  const concluidas = contasPermitidas.filter(contaConcluida);
+  const soma = (itens: Conta[]) =>
+    itens.reduce((total, item) => total + item.valor, 0);
 
-          if (
-            filtro ===
-            "Pendentes"
-          ) {
-            return (
-              conta.status ===
-                "Pendente" &&
-              !verificarVencida(
-                conta
-              )
-            );
-          }
-
-          if (
-            filtro ===
-            "Vencidos"
-          ) {
-            return verificarVencida(
-              conta
-            );
-          }
-
-          if (
-            filtro ===
-              "Recebidos" ||
-            filtro ===
-              "Pagos"
-          ) {
-            return (
-              conta.status ===
-                "Recebido" ||
-              conta.status ===
-                "Pago"
-            );
-          }
-
-          return true;
-        }
-      );
-    }, [
-      contas,
-      tipo,
-      filtro,
-    ]);
-
-  const totalPendente =
-    contasDoTipo
-      .filter(
-        (conta) =>
-          conta.status ===
-          "Pendente"
-      )
-      .reduce(
-        (
-          total,
-          conta
-        ) =>
-          total +
-          conta.valor,
-
-        0
-      );
-
-  const totalConcluido =
-    contasDoTipo
-      .filter(
-        (conta) =>
-          conta.status ===
-            "Pago" ||
-          conta.status ===
-            "Recebido"
-      )
-      .reduce(
-        (
-          total,
-          conta
-        ) =>
-          total +
-          conta.valor,
-
-        0
-      );
-
-  const totalVencido =
-    contasDoTipo
-      .filter(
-        verificarVencida
-      )
-      .reduce(
-        (
-          total,
-          conta
-        ) =>
-          total +
-          conta.valor,
-
-        0
-      );
-
-  const titulo =
-    tipo ===
-    "receber"
-      ? "Contas a Receber"
-      : "Contas a Pagar";
-
-  const categorias =
-    tipo ===
-    "receber"
+  const categoriasFormulario =
+    tipo === "receber"
       ? configuracoes.tiposEntrada
       : configuracoes.tiposSaida;
 
-  /* =======================================================
-     INTERFACE
-  ======================================================= */
+  const aplicarAtalho = (dias: number) => {
+    setSituacao("A vencer");
+    setDataInicial(hojeISO());
+    setDataFinal(somarDiasISO(dias));
+  };
+
+  const buscarInadimplentes = () => {
+    setSituacao("Vencidos");
+    setSomenteMensalidades(true);
+    setDataInicial("");
+    setDataFinal("");
+  };
+
+  const limparFiltros = () => {
+    setBusca("");
+    setSituacao("Todos");
+    setFiltroCategoria("Todas");
+    setFiltroBanco("Todos");
+    setFiltroUnidade("Todas");
+    setDataInicial("");
+    setDataFinal("");
+    setSomenteMensalidades(false);
+    setOrdenacao("vencimento-asc");
+  };
+
+  const exportarExcel = () => {
+    if (!contasFiltradas.length) return alert("Não há contas para exportar.");
+    const dados = contasFiltradas.map((conta) => ({
+      Vencimento: formatarData(conta.vencimento),
+      Descrição: conta.descricao,
+      Aluno: conta.alunoNome ?? "",
+      Categoria: conta.categoria,
+      Banco: conta.banco,
+      Unidade: conta.unidade,
+      Valor: conta.valor,
+      Status: contaVencida(conta) ? "Vencido" : conta.status,
+      Observação: conta.observacao,
+      "Criado por": conta.criadoPorNome ?? "",
+    }));
+    const planilha = XLSX.utils.json_to_sheet(dados);
+    planilha["!cols"] = [
+      { wch: 13 },
+      { wch: 38 },
+      { wch: 28 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 13 },
+      { wch: 45 },
+      { wch: 22 },
+    ];
+    const pasta = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(pasta, planilha, "Contas");
+    XLSX.writeFile(
+      pasta,
+      `${tipo === "receber" ? "contas-a-receber" : "contas-a-pagar"}-${hojeISO()}.xlsx`
+    );
+  };
+
+  const titulo = tipo === "receber" ? "Contas a Receber" : "Contas a Pagar";
 
   return (
     <div>
-      <header
-        style={
-          estilos.cabecalho
-        }
-      >
-        <div>
-          <h1
-            style={{
-              margin: 0,
-
-              fontSize: 32,
-            }}
-          >
-            {titulo}
-          </h1>
-
-          <p
-            style={
-              estilos.textoCinza
-            }
-          >
-            Controle de vencimentos
-            e baixas financeiras.
-          </p>
-        </div>
+      <header style={estilos.cabecalho}>
+        <h1 style={estilos.titulo}>{titulo}</h1>
+        <p style={estilos.textoCinza}>
+          Vencimentos em ordem, busca avançada e baixas financeiras.
+        </p>
       </header>
 
-      {/* RESUMO */}
+      {usuarioAtual.perfil === "Secretaria" && (
+        <div style={estilos.avisoPermissao}>
+          <strong>Visão da Secretaria:</strong> você visualiza mensalidades de
+          alunos e contas cadastradas pelo seu próprio usuário. As demais contas
+          administrativas permanecem restritas.
+        </div>
+      )}
 
-      <section
-        style={
-          estilos.cardsResumo
-        }
-      >
-        <CardResumo
-          titulo={
-            tipo ===
-            "receber"
-              ? "A Receber"
-              : "A Pagar"
-          }
-
-          valor={moeda(
-            totalPendente
-          )}
-        />
-
-        <CardResumo
-          titulo="Vencido"
-
-          valor={moeda(
-            totalVencido
-          )}
-        />
-
-        <CardResumo
-          titulo={
-            tipo ===
-            "receber"
-              ? "Recebido"
-              : "Pago"
-          }
-
-          valor={moeda(
-            totalConcluido
-          )}
-        />
-
-        <CardResumo
-          titulo="Quantidade"
-
-          valor={String(
-            contasDoTipo.length
-          )}
-        />
+      <section style={estilos.cardsResumo}>
+        <CardResumo titulo={tipo === "receber" ? "A receber" : "A pagar"} valor={moeda(soma(pendentes))} detalhe={`${pendentes.length} pendente(s)`} />
+        <CardResumo titulo="Vencido" valor={moeda(soma(vencidas))} detalhe={`${vencidas.length} conta(s)`} destaque="vermelho" />
+        <CardResumo titulo="Próximos 30 dias" valor={moeda(soma(proximos30))} detalhe={`${proximos30.length} vencimento(s)`} destaque="amarelo" />
+        <CardResumo titulo={tipo === "receber" ? "Recebido" : "Pago"} valor={moeda(soma(concluidas))} detalhe={`${concluidas.length} concluída(s)`} destaque="verde" />
       </section>
 
-      {/* FORMULÁRIO */}
-
-      <section
-        style={
-          estilos.caixa
-        }
-      >
-        <h2>
-          {contaEditando
-            ? "Editar conta"
-            : tipo ===
-                "receber"
-              ? "Nova conta a receber"
-              : "Nova conta a pagar"}
-        </h2>
-
-        <div
-          style={
-            estilos.formGrid
-          }
-        >
-          <CampoTexto
-            label="Descrição"
-
-            value={
-              descricao
-            }
-
-            onChange={
-              setDescricao
-            }
-
-            placeholder={
-              tipo ===
-              "receber"
-                ? "Ex.: Mensalidade João"
-                : "Ex.: Energia elétrica"
-            }
-          />
-
-          <CampoTexto
-            label="Valor"
-
-            value={valor}
-
-            onChange={
-              setValor
-            }
-
-            placeholder="Ex.: 500,00"
-          />
-
-          <CampoTexto
-            label="Vencimento"
-
-            value={
-              vencimento
-            }
-
-            onChange={
-              setVencimento
-            }
-
-            type="date"
-          />
-
-          <CampoSelect
-            label={
-              tipo ===
-              "receber"
-                ? "Tipo de Entrada"
-                : "Tipo de Saída"
-            }
-
-            value={
-              categoria
-            }
-
-            opcoes={
-              categorias
-            }
-
-            onChange={
-              setCategoria
-            }
-          />
-
-          <CampoSelect
-            label="Banco / Conta"
-
-            value={banco}
-
-            opcoes={
-              configuracoes.bancos
-            }
-
-            onChange={
-              setBanco
-            }
-          />
-
-          <CampoSelect
-            label="Unidade"
-
-            value={
-              unidade
-            }
-
-            opcoes={
-              configuracoes.unidades
-            }
-
-            onChange={
-              setUnidade
-            }
-          />
-
-          <CampoTexto
-            label="Observação"
-
-            value={
-              observacao
-            }
-
-            onChange={
-              setObservacao
-            }
-
-            placeholder="Opcional"
-          />
+      <section style={estilos.caixa}>
+        <h2>{contaEditando ? "Editar conta" : `Nova conta a ${tipo}`}</h2>
+        <div style={estilos.formGrid}>
+          <CampoTexto label="Descrição" value={descricao} onChange={setDescricao} placeholder={tipo === "receber" ? "Ex.: Mensalidade João" : "Ex.: Energia elétrica"} />
+          <CampoTexto label="Valor" value={valor} onChange={setValor} placeholder="Ex.: 500,00" />
+          <CampoTexto label="Vencimento" value={vencimento} onChange={setVencimento} type="date" />
+          <CampoSelect label={tipo === "receber" ? "Tipo de Entrada" : "Tipo de Saída"} value={categoria} opcoes={categoriasFormulario} onChange={setCategoria} />
+          <CampoSelect label="Banco / Conta" value={banco} opcoes={configuracoes.bancos} onChange={setBanco} />
+          <CampoSelect label="Unidade" value={unidade} opcoes={configuracoes.unidades} onChange={setUnidade} />
+          <CampoTexto label="Observação" value={observacao} onChange={setObservacao} placeholder="Opcional" />
         </div>
-
-        <div
-          style={
-            estilos.botoes
-          }
-        >
-          <button
-            onClick={
-              salvarConta
-            }
-
-            style={
-              estilos.botaoPrincipal
-            }
-          >
-            {contaEditando
-              ? "Salvar alterações"
-              : "Salvar conta"}
+        <div style={estilos.botoes}>
+          <button onClick={salvarConta} style={estilos.botaoPrincipal}>
+            {contaEditando ? "Salvar alterações" : "Salvar conta"}
           </button>
-
           {contaEditando && (
-            <button
-              onClick={
-                limparFormulario
-              }
-
-              style={
-                estilos.botaoSecundario
-              }
-            >
+            <button onClick={limparFormulario} style={estilos.botaoSecundario}>
               Cancelar edição
             </button>
           )}
         </div>
       </section>
 
-      {/* LISTAGEM */}
-
-      <section
-        style={{
-          ...estilos.caixa,
-
-          marginTop: 25,
-        }}
-      >
-        <div
-          style={
-            estilos.topoLista
-          }
-        >
-          <h2>
-            {titulo}
-          </h2>
-
-          <select
-            value={
-              filtro
-            }
-
-            onChange={(
-              evento
-            ) =>
-              setFiltro(
-                evento.target.value
-              )
-            }
-
-            style={
-              estilos.input
-            }
-          >
-            <option>
-              Todos
-            </option>
-
-            <option>
-              Pendentes
-            </option>
-
-            <option>
-              Vencidos
-            </option>
-
-            <option>
-              {tipo ===
-              "receber"
-                ? "Recebidos"
-                : "Pagos"}
-            </option>
-          </select>
+      <section style={{ ...estilos.caixa, marginTop: 25 }}>
+        <div style={estilos.topoLista}>
+          <div>
+            <h2 style={{ marginBottom: 5 }}>{titulo}</h2>
+            <span style={estilos.textoCinza}>
+              {contasFiltradas.length} resultado(s), ordenados por vencimento.
+            </span>
+          </div>
+          <div style={estilos.atalhos}>
+            {tipo === "receber" && (
+              <button onClick={buscarInadimplentes} style={estilos.botaoAlerta}>
+                Alunos inadimplentes
+              </button>
+            )}
+            <button onClick={() => aplicarAtalho(7)} style={estilos.botaoAtalho}>Próximos 7 dias</button>
+            <button onClick={() => aplicarAtalho(15)} style={estilos.botaoAtalho}>Próximos 15 dias</button>
+            <button onClick={() => aplicarAtalho(30)} style={estilos.botaoAtalho}>Próximos 30 dias</button>
+          </div>
         </div>
 
-        {contasFiltradas.length ===
-        0 ? (
-          <div
-            style={
-              estilos.vazio
-            }
-          >
-            Nenhuma conta encontrada.
-          </div>
+        <div style={estilos.filtros}>
+          <CampoTexto label="Buscar aluno ou descrição" value={busca} onChange={setBusca} placeholder="Nome do aluno, conta ou observação..." />
+          <CampoSelect label="Situação" value={situacao} opcoes={["Todos", "Pendentes", "Vencidos", "Vencem hoje", "A vencer", "Concluídos"]} onChange={(valor) => setSituacao(valor as SituacaoFiltro)} semOpcaoVazia />
+          <CampoSelect label="Categoria" value={filtroCategoria} opcoes={["Todas", ...listas.categorias]} onChange={setFiltroCategoria} semOpcaoVazia />
+          <CampoSelect label="Banco / Conta" value={filtroBanco} opcoes={["Todos", ...listas.bancos]} onChange={setFiltroBanco} semOpcaoVazia />
+          <CampoSelect label="Unidade" value={filtroUnidade} opcoes={["Todas", ...listas.unidades]} onChange={setFiltroUnidade} semOpcaoVazia />
+          <CampoTexto label="Vencimento inicial" value={dataInicial} onChange={setDataInicial} type="date" />
+          <CampoTexto label="Vencimento final" value={dataFinal} onChange={setDataFinal} type="date" />
+          <CampoSelect label="Ordenar por" value={ordenacao} opcoes={["vencimento-asc", "vencimento-desc", "valor-desc", "valor-asc", "descricao"]} rotulos={["Vencimento mais próximo", "Vencimento mais distante", "Maior valor", "Menor valor", "Descrição A–Z"]} onChange={(valor) => setOrdenacao(valor as Ordenacao)} semOpcaoVazia />
+        </div>
+
+        {tipo === "receber" && (
+          <label style={estilos.checkbox}>
+            <input
+              type="checkbox"
+              checked={somenteMensalidades}
+              onChange={(evento) => setSomenteMensalidades(evento.target.checked)}
+            />
+            Mostrar somente mensalidades de alunos
+          </label>
+        )}
+
+        <div style={estilos.botoes}>
+          <button onClick={limparFiltros} style={estilos.botaoSecundario}>Limpar filtros</button>
+          <button onClick={exportarExcel} style={estilos.botaoExcel}>Exportar resultado para Excel</button>
+        </div>
+
+        {!contasDaPagina.length ? (
+          <div style={estilos.vazio}>Nenhuma conta encontrada para os filtros selecionados.</div>
         ) : (
-          <div
-            style={
-              estilos.tabelaContainer
-            }
-          >
-            <table
-              style={
-                estilos.tabela
-              }
-            >
-              <thead>
-                <tr>
-                  <th
-                    style={
-                      estilos.th
-                    }
-                  >
-                    Descrição
-                  </th>
-
-                  <th
-                    style={
-                      estilos.th
-                    }
-                  >
-                    Vencimento
-                  </th>
-
-                  <th
-                    style={
-                      estilos.th
-                    }
-                  >
-                    Categoria
-                  </th>
-
-                  <th
-                    style={
-                      estilos.th
-                    }
-                  >
-                    Banco
-                  </th>
-
-                  <th
-                    style={
-                      estilos.th
-                    }
-                  >
-                    Unidade
-                  </th>
-
-                  <th
-                    style={
-                      estilos.th
-                    }
-                  >
-                    Valor
-                  </th>
-
-                  <th
-                    style={
-                      estilos.th
-                    }
-                  >
-                    Status
-                  </th>
-
-                  <th
-                    style={
-                      estilos.th
-                    }
-                  >
-                    Ações
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {contasFiltradas.map(
-                  (conta) => {
-                    const vencida =
-                      verificarVencida(
-                        conta
-                      );
-
-                    const statusTela =
-                      vencida
-                        ? "Vencido"
-                        : conta.status;
-
+          <>
+            <div style={estilos.tabelaContainer}>
+              <table style={estilos.tabela}>
+                <thead>
+                  <tr>
+                    <th style={estilos.th}>Vencimento</th>
+                    <th style={estilos.th}>Descrição / aluno</th>
+                    <th style={estilos.th}>Categoria</th>
+                    <th style={estilos.th}>Banco</th>
+                    <th style={estilos.th}>Unidade</th>
+                    <th style={estilos.th}>Valor</th>
+                    <th style={estilos.th}>Status</th>
+                    <th style={estilos.th}>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contasDaPagina.map((conta) => {
+                    const vencida = contaVencida(conta);
+                    const statusTela = vencida ? "Vencido" : conta.status;
                     return (
-                      <tr
-                        key={
-                          conta.id
-                        }
-                      >
-                        <td
-                          style={
-                            estilos.td
-                          }
-                        >
-                          {
-                            conta.descricao
-                          }
+                      <tr key={conta.id} style={vencida ? estilos.linhaVencida : undefined}>
+                        <td style={estilos.td}>
+                          <strong>{formatarData(conta.vencimento)}</strong>
                         </td>
-
-                        <td
-                          style={
-                            estilos.td
-                          }
-                        >
-                          {new Date(
-                            `${conta.vencimento}T00:00:00`
-                          ).toLocaleDateString(
-                            "pt-BR"
-                          )}
+                        <td style={estilos.tdDescricao}>
+                          <strong>{conta.alunoNome || conta.descricao}</strong>
+                          {conta.alunoNome && <small style={estilos.detalhe}>{conta.descricao}</small>}
+                          {conta.observacao && <small style={estilos.detalhe}>{conta.observacao}</small>}
                         </td>
-
-                        <td
-                          style={
-                            estilos.td
-                          }
-                        >
-                          {
-                            conta.categoria
-                          }
-                        </td>
-
-                        <td
-                          style={
-                            estilos.td
-                          }
-                        >
-                          {
-                            conta.banco
-                          }
-                        </td>
-
-                        <td
-                          style={
-                            estilos.td
-                          }
-                        >
-                          {
-                            conta.unidade
-                          }
-                        </td>
-
-                        <td
-                          style={
-                            estilos.td
-                          }
-                        >
-                          {moeda(
-                            conta.valor
-                          )}
-                        </td>
-
-                        <td
-                          style={
-                            estilos.td
-                          }
-                        >
-                          <span
-                            style={{
-                              ...estilos.status,
-
-                              background:
-                                statusTela ===
-                                "Vencido"
-                                  ? "#fee2e2"
-                                  : statusTela ===
-                                        "Pendente"
-                                    ? "#fef3c7"
-                                    : "#dcfce7",
-
-                              color:
-                                statusTela ===
-                                "Vencido"
-                                  ? "#991b1b"
-                                  : statusTela ===
-                                        "Pendente"
-                                    ? "#92400e"
-                                    : "#166534",
-                            }}
-                          >
-                            {
-                              statusTela
-                            }
+                        <td style={estilos.td}>{conta.categoria}</td>
+                        <td style={estilos.td}>{conta.banco}</td>
+                        <td style={estilos.td}>{conta.unidade}</td>
+                        <td style={estilos.td}><strong>{moeda(conta.valor)}</strong></td>
+                        <td style={estilos.td}>
+                          <span style={{
+                            ...estilos.status,
+                            ...(statusTela === "Vencido"
+                              ? estilos.statusVencido
+                              : statusTela === "Pendente"
+                                ? estilos.statusPendente
+                                : estilos.statusConcluido),
+                          }}>
+                            {statusTela}
                           </span>
                         </td>
-
-                        <td
-                          style={
-                            estilos.td
-                          }
-                        >
-                          <div
-                            style={{
-                              display:
-                                "flex",
-
-                              gap: 6,
-
-                              flexWrap:
-                                "wrap",
-                            }}
-                          >
-                            {conta.status ===
-                              "Pendente" && (
-                              <button
-                                onClick={() =>
-                                  baixarConta(
-                                    conta
-                                  )
-                                }
-
-                                style={
-                                  estilos.botaoBaixar
-                                }
-                              >
-                                {tipo ===
-                                "receber"
-                                  ? "Receber"
-                                  : "Pagar"}
+                        <td style={estilos.td}>
+                          <div style={estilos.acoesTabela}>
+                            {conta.status === "Pendente" && (
+                              <button onClick={() => baixarConta(conta)} style={estilos.botaoBaixar}>
+                                {tipo === "receber" ? "Receber" : "Pagar"}
                               </button>
                             )}
-
-                            <button
-                              onClick={() =>
-                                editarConta(
-                                  conta
-                                )
-                              }
-
-                              style={
-                                estilos.botaoEditar
-                              }
-                            >
-                              Editar
-                            </button>
-
-                            <button
-                              onClick={() =>
-                                excluirConta(
-                                  conta
-                                )
-                              }
-
-                              style={
-                                estilos.botaoExcluir
-                              }
-                            >
-                              Excluir
-                            </button>
+                            <button onClick={() => editarConta(conta)} style={estilos.botaoEditar}>Editar</button>
+                            <button onClick={() => excluirConta(conta)} style={estilos.botaoExcluir}>Excluir</button>
                           </div>
                         </td>
                       </tr>
                     );
-                  }
-                )}
-              </tbody>
-            </table>
-          </div>
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={estilos.paginacao}>
+              <span>
+                Página {paginaSegura} de {totalPaginas}
+              </span>
+              <div style={estilos.acoesTabela}>
+                <button disabled={paginaSegura === 1} onClick={() => setPagina((atual) => Math.max(1, atual - 1))} style={estilos.botaoSecundario}>Anterior</button>
+                <button disabled={paginaSegura === totalPaginas} onClick={() => setPagina((atual) => Math.min(totalPaginas, atual + 1))} style={estilos.botaoSecundario}>Próxima</button>
+              </div>
+            </div>
+          </>
         )}
       </section>
     </div>
   );
 }
 
-/* =========================================================
-   COMPONENTES
-========================================================= */
-
-function CardResumo({
-  titulo,
-
-  valor,
-}: {
+type CardResumoProps = {
   titulo: string;
-
   valor: string;
-}) {
-  return (
-    <div
-      style={
-        estilos.cardResumo
-      }
-    >
-      <span
-        style={
-          estilos.textoCinza
-        }
-      >
-        {titulo}
-      </span>
+  detalhe: string;
+  destaque?: "vermelho" | "amarelo" | "verde";
+};
 
-      <strong
-        style={{
-          fontSize: 25,
-        }}
-      >
-        {valor}
-      </strong>
+function CardResumo({ titulo, valor, detalhe, destaque }: CardResumoProps) {
+  const borda =
+    destaque === "vermelho"
+      ? "#dc2626"
+      : destaque === "amarelo"
+        ? "#d97706"
+        : destaque === "verde"
+          ? "#15803d"
+          : "#2563eb";
+  return (
+    <div style={{ ...estilos.cardResumo, borderTop: `4px solid ${borda}` }}>
+      <span style={estilos.textoCinza}>{titulo}</span>
+      <strong style={{ fontSize: 24 }}>{valor}</strong>
+      <small style={estilos.detalhe}>{detalhe}</small>
     </div>
   );
 }
 
-function CampoTexto({
-  label,
-
-  value,
-
-  onChange,
-
-  placeholder = "",
-
-  type = "text",
-}: {
+type CampoTextoProps = {
   label: string;
-
   value: string;
-
-  onChange: (
-    valor: string
-  ) => void;
-
+  onChange: (valor: string) => void;
   placeholder?: string;
-
   type?: string;
-}) {
+};
+
+function CampoTexto({ label, value, onChange, placeholder = "", type = "text" }: CampoTextoProps) {
   return (
-    <label
-      style={
-        estilos.campoGrupo
-      }
-    >
-      <strong>
-        {label}
-      </strong>
-
-      <input
-        type={type}
-
-        value={value}
-
-        placeholder={
-          placeholder
-        }
-
-        onChange={(
-          evento
-        ) =>
-          onChange(
-            evento.target.value
-          )
-        }
-
-        style={
-          estilos.input
-        }
-      />
+    <label style={estilos.campoGrupo}>
+      <strong>{label}</strong>
+      <input type={type} value={value} placeholder={placeholder} onChange={(evento) => onChange(evento.target.value)} style={estilos.input} />
     </label>
   );
 }
 
-function CampoSelect({
-  label,
-
-  value,
-
-  opcoes,
-
-  onChange,
-}: {
+type CampoSelectProps = {
   label: string;
-
   value: string;
-
   opcoes: string[];
+  onChange: (valor: string) => void;
+  semOpcaoVazia?: boolean;
+  rotulos?: string[];
+};
 
-  onChange: (
-    valor: string
-  ) => void;
-}) {
-  /*
-    Preserva valores antigos
-    que ainda não estejam
-    cadastrados nas novas listas.
-  */
+function CampoSelect({ label, value, opcoes, onChange, semOpcaoVazia = false, rotulos }: CampoSelectProps) {
   const opcoesComValorAtual =
-    value &&
-    !opcoes.includes(value)
-      ? [
-          value,
-
-          ...opcoes,
-        ]
-      : opcoes;
-
+    value && !opcoes.includes(value) ? [value, ...opcoes] : opcoes;
   return (
-    <label
-      style={
-        estilos.campoGrupo
-      }
-    >
-      <strong>
-        {label}
-      </strong>
-
-      <select
-        value={value}
-
-        onChange={(
-          evento
-        ) =>
-          onChange(
-            evento.target.value
-          )
-        }
-
-        style={
-          estilos.input
-        }
-      >
-        <option value="">
-          Selecione...
-        </option>
-
-        {opcoesComValorAtual.map(
-          (opcao) => (
-            <option
-              key={opcao}
-
-              value={opcao}
-            >
-              {opcao}
-            </option>
-          )
-        )}
+    <label style={estilos.campoGrupo}>
+      <strong>{label}</strong>
+      <select value={value} onChange={(evento) => onChange(evento.target.value)} style={estilos.input}>
+        {!semOpcaoVazia && <option value="">Selecione...</option>}
+        {opcoesComValorAtual.map((opcao, indice) => (
+          <option key={opcao} value={opcao}>
+            {rotulos?.[indice] ?? opcao}
+          </option>
+        ))}
       </select>
     </label>
   );
 }
 
-/* =========================================================
-   ESTILOS
-========================================================= */
-
-const estilos: Record<
-  string,
-  CSSProperties
-> = {
-  cabecalho: {
-    marginBottom: 25,
+const estilos: Record<string, CSSProperties> = {
+  cabecalho: { marginBottom: 24 },
+  titulo: { margin: 0, fontSize: 32, color: "#0f172a" },
+  textoCinza: { color: "#64748b", lineHeight: 1.6 },
+  avisoPermissao: {
+    background: "#eff6ff",
+    border: "1px solid #93c5fd",
+    color: "#1e3a8a",
+    padding: "14px 18px",
+    borderRadius: 12,
+    marginBottom: 22,
+    lineHeight: 1.5,
   },
-
-  textoCinza: {
-    color: "#657084",
-
-    lineHeight: 1.6,
-  },
-
   cardsResumo: {
     display: "grid",
-
-    gridTemplateColumns:
-      "repeat(auto-fit,minmax(190px,1fr))",
-
+    gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
     gap: 18,
-
     marginBottom: 25,
   },
-
   cardResumo: {
     background: "white",
-
-    padding: 22,
-
+    padding: 20,
     borderRadius: 15,
-
     display: "flex",
-
     flexDirection: "column",
-
-    gap: 12,
-
-    boxShadow:
-      "0 6px 18px rgba(0,0,0,.06)",
+    gap: 9,
+    boxShadow: "0 6px 18px rgba(15,23,42,.07)",
   },
-
+  detalhe: { color: "#64748b", display: "block", marginTop: 4, lineHeight: 1.35 },
   caixa: {
     background: "white",
-
-    padding: 28,
-
+    padding: 26,
     borderRadius: 17,
-
-    boxShadow:
-      "0 6px 18px rgba(0,0,0,.06)",
+    boxShadow: "0 6px 18px rgba(15,23,42,.07)",
   },
-
   formGrid: {
     display: "grid",
-
-    gridTemplateColumns:
-      "repeat(auto-fit,minmax(220px,1fr))",
-
+    gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
     gap: 18,
-
     marginTop: 20,
   },
-
-  campoGrupo: {
-    display: "flex",
-
-    flexDirection: "column",
-
-    gap: 7,
+  filtros: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))",
+    gap: 14,
+    marginTop: 22,
   },
-
+  campoGrupo: { display: "flex", flexDirection: "column", gap: 7 },
   input: {
     padding: "13px 14px",
-
-    border:
-      "1px solid #ccd3dd",
-
+    border: "1px solid #cbd5e1",
     borderRadius: 9,
-
     fontSize: 15,
-
     boxSizing: "border-box",
-
     width: "100%",
+    background: "#fff",
+    color: "#0f172a",
   },
-
-  botoes: {
-    display: "flex",
-
-    gap: 10,
-
-    marginTop: 25,
-
-    flexWrap: "wrap",
-  },
-
-  botaoPrincipal: {
-    background: "#15803d",
-
-    color: "white",
-
-    border: "none",
-
-    borderRadius: 9,
-
-    padding: "13px 20px",
-
-    cursor: "pointer",
-
-    fontWeight: "bold",
-  },
-
-  botaoSecundario: {
-    background: "white",
-
-    border:
-      "1px solid #ccd3dd",
-
-    borderRadius: 9,
-
-    padding: "13px 20px",
-
-    cursor: "pointer",
-  },
-
+  botoes: { display: "flex", gap: 10, marginTop: 22, flexWrap: "wrap" },
   topoLista: {
     display: "flex",
-
-    justifyContent:
-      "space-between",
-
-    alignItems: "center",
-
-    gap: 15,
-
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 18,
     flexWrap: "wrap",
   },
-
-  tabelaContainer: {
-    overflowX: "auto",
-
-    marginTop: 20,
+  atalhos: { display: "flex", gap: 8, flexWrap: "wrap" },
+  botaoPrincipal: {
+    background: "#15803d",
+    color: "white",
+    border: "none",
+    borderRadius: 9,
+    padding: "13px 20px",
+    cursor: "pointer",
+    fontWeight: 700,
   },
-
-  tabela: {
-    width: "100%",
-
-    minWidth: 1100,
-
-    borderCollapse:
-      "collapse",
+  botaoSecundario: {
+    background: "white",
+    color: "#1e293b",
+    border: "1px solid #cbd5e1",
+    borderRadius: 9,
+    padding: "11px 16px",
+    cursor: "pointer",
+    fontWeight: 600,
   },
-
+  botaoAtalho: {
+    background: "#e2e8f0",
+    color: "#0f172a",
+    border: "none",
+    borderRadius: 9,
+    padding: "10px 13px",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  botaoAlerta: {
+    background: "#fee2e2",
+    color: "#991b1b",
+    border: "1px solid #fecaca",
+    borderRadius: 9,
+    padding: "10px 13px",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  botaoExcel: {
+    background: "#166534",
+    color: "white",
+    border: "none",
+    borderRadius: 9,
+    padding: "11px 16px",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  checkbox: {
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
+    marginTop: 18,
+    color: "#334155",
+    fontWeight: 600,
+  },
+  tabelaContainer: { overflowX: "auto", marginTop: 22 },
+  tabela: { width: "100%", minWidth: 1120, borderCollapse: "collapse" },
   th: {
     background: "#101a2d",
-
     color: "white",
-
     padding: 12,
-
     textAlign: "left",
-
     whiteSpace: "nowrap",
+    position: "sticky",
+    top: 0,
+    zIndex: 1,
   },
-
   td: {
     padding: 12,
-
-    borderBottom:
-      "1px solid #e8ebef",
-
+    borderBottom: "1px solid #e2e8f0",
     whiteSpace: "nowrap",
+    verticalAlign: "top",
   },
-
-  status: {
-    padding: "6px 10px",
-
-    borderRadius: 20,
-
-    fontSize: 13,
-
-    fontWeight: "bold",
+  tdDescricao: {
+    padding: 12,
+    borderBottom: "1px solid #e2e8f0",
+    minWidth: 260,
+    maxWidth: 390,
+    whiteSpace: "normal",
+    verticalAlign: "top",
   },
-
+  linhaVencida: { background: "#fff7f7" },
+  status: { padding: "6px 10px", borderRadius: 20, fontSize: 13, fontWeight: 700 },
+  statusVencido: { background: "#fee2e2", color: "#991b1b" },
+  statusPendente: { background: "#fef3c7", color: "#92400e" },
+  statusConcluido: { background: "#dcfce7", color: "#166534" },
+  acoesTabela: { display: "flex", gap: 6, flexWrap: "wrap" },
   botaoBaixar: {
     background: "#15803d",
-
     color: "white",
-
     border: "none",
-
     borderRadius: 6,
-
     padding: "8px 10px",
-
     cursor: "pointer",
   },
-
   botaoEditar: {
     background: "#2563eb",
-
     color: "white",
-
     border: "none",
-
     borderRadius: 6,
-
     padding: "8px 10px",
-
     cursor: "pointer",
   },
-
   botaoExcluir: {
     background: "#b91c1c",
-
     color: "white",
-
     border: "none",
-
     borderRadius: 6,
-
     padding: "8px 10px",
-
     cursor: "pointer",
   },
-
-  vazio: {
-    textAlign: "center",
-
-    color: "#8c96a8",
-
-    padding: 35,
+  vazio: { textAlign: "center", color: "#64748b", padding: 38 },
+  paginacao: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 15,
+    marginTop: 20,
+    flexWrap: "wrap",
+    color: "#475569",
   },
 };
 

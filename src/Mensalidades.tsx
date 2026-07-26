@@ -720,6 +720,10 @@ function Mensalidades() {
             `Aluno: ${aluno.nome} | Curso: ${aluno.curso || plano.curso || plano.nome} | Valor contratado: ${moeda(valorParcela)} | Geração: ${geracaoId}`,
           status: "Pendente",
           tipo: "receber",
+          origem: "mensalidade",
+          alunoId: aluno.id,
+          alunoNome: aluno.nome,
+          criadoEm: new Date().toISOString(),
         })
       );
 
