@@ -1913,7 +1913,9 @@ function App() {
       style={estilos.app}
     >
       <header
-        className="erp-topo-mobile"
+        className="erp-topo-mobile notranslate"
+        lang="pt-BR"
+        translate="no"
       >
         <button
           type="button"
@@ -1969,11 +1971,13 @@ function App() {
       {/* MENU */}
 
       <aside
-        className={`erp-sidebar${
+        className={`erp-sidebar notranslate${
           menuMobileAberto
             ? " erp-sidebar-aberta"
             : ""
         }`}
+        lang="pt-BR"
+        translate="no"
         style={
           estilos.sidebar
         }
@@ -2008,11 +2012,16 @@ function App() {
           </p>
         </div>
 
-        <nav>
+        <nav
+          aria-label="Menu principal do ERP"
+        >
           {menu.map(
             (item) => (
               <button
                 key={item}
+                type="button"
+                lang="pt-BR"
+                translate="no"
                 onClick={() => {
                   setPagina(
                     item
