@@ -546,6 +546,9 @@ function Escolas({
             descricaoDetalhada,
           status: "Pendente",
           tipo: "receber",
+          origem: "escola",
+          criadoEm:
+            new Date().toISOString(),
         },
       ];
 
@@ -580,6 +583,9 @@ function Escolas({
             `Repasse ${escolaAtual.tipoRepasse.toLowerCase()} referente à cobrança da plataforma. ${descricaoDetalhada}`,
           status: "Pendente",
           tipo: "pagar",
+          origem: "repasse-escola",
+          criadoEm:
+            new Date().toISOString(),
         });
       }
 

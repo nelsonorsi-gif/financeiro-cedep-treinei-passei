@@ -2676,6 +2676,9 @@ function App() {
             onBaixar={
               baixarContaFinanceira
             }
+            usuarioAtual={
+              usuarioAtual
+            }
           />
         )}
 
@@ -2686,6 +2689,9 @@ function App() {
 
             onBaixar={
               baixarContaFinanceira
+            }
+            usuarioAtual={
+              usuarioAtual
             }
           />
         )}
