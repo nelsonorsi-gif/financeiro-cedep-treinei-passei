@@ -285,6 +285,37 @@ function App() {
     setPagina,
   ] = useState("Dashboard");
 
+  const [
+    menuMobileAberto,
+    setMenuMobileAberto,
+  ] = useState(false);
+
+  useEffect(() => {
+    const fecharComEscape = (
+      evento: KeyboardEvent
+    ) => {
+      if (
+        evento.key === "Escape"
+      ) {
+        setMenuMobileAberto(
+          false
+        );
+      }
+    };
+
+    window.addEventListener(
+      "keydown",
+      fecharComEscape
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        fecharComEscape
+      );
+    };
+  }, []);
+
   useEffect(() => {
     let ativo = true;
 
@@ -1877,10 +1908,72 @@ function App() {
   }
 
   return (
-    <div style={estilos.app}>
+    <div
+      className="erp-app"
+      style={estilos.app}
+    >
+      <header
+        className="erp-topo-mobile"
+      >
+        <button
+          type="button"
+          className="erp-menu-mobile-botao"
+          aria-label={
+            menuMobileAberto
+              ? "Fechar menu"
+              : "Abrir menu"
+          }
+          aria-expanded={
+            menuMobileAberto
+          }
+          onClick={() =>
+            setMenuMobileAberto(
+              (aberto) =>
+                !aberto
+            )
+          }
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+
+        <img
+          src="/logo-cedep-branca.png"
+          alt="CEDEP Cursos"
+        />
+
+        <div>
+          <strong>
+            {pagina}
+          </strong>
+          <span>
+            {usuarioAtual.nome}
+          </span>
+        </div>
+      </header>
+
+      {menuMobileAberto && (
+        <button
+          type="button"
+          className="erp-menu-mobile-fundo"
+          aria-label="Fechar menu"
+          onClick={() =>
+            setMenuMobileAberto(
+              false
+            )
+          }
+        />
+      )}
+
       {/* MENU */}
 
       <aside
+        className={`erp-sidebar${
+          menuMobileAberto
+            ? " erp-sidebar-aberta"
+            : ""
+        }`}
         style={
           estilos.sidebar
         }
@@ -1923,6 +2016,10 @@ function App() {
                 onClick={() => {
                   setPagina(
                     item
+                  );
+
+                  setMenuMobileAberto(
+                    false
                   );
 
                   if (
@@ -1987,6 +2084,7 @@ function App() {
       {/* CONTEÚDO */}
 
       <main
+        className="erp-conteudo"
         style={
           estilos.conteudo
         }
