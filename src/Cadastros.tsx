@@ -15,6 +15,7 @@ import {
   type CatalogoCursos,
   type Plano,
 } from "./CatalogoCursos";
+import Escolas from "./Escolas";
 
 type Situacao = "Ativo" | "Inativo";
 
@@ -227,7 +228,11 @@ const parceiroVazio = (): Omit<
 
 function Cadastros() {
   const [aba, setAba] =
-    useState<"Alunos" | "Parceiros">(
+    useState<
+      | "Alunos"
+      | "Parceiros"
+      | "Escolas"
+    >(
       "Alunos"
     );
 
@@ -750,6 +755,7 @@ function Cadastros() {
     novaAba:
       | "Alunos"
       | "Parceiros"
+      | "Escolas"
   ) => {
     setAba(novaAba);
     setBusca("");
@@ -779,7 +785,8 @@ function Cadastros() {
             }
           >
             Alunos, responsáveis
-            financeiros e parceiros.
+            financeiros, parceiros e
+            escolas da plataforma.
           </p>
         </div>
       </header>
@@ -793,6 +800,7 @@ function Cadastros() {
           [
             "Alunos",
             "Parceiros",
+            "Escolas",
           ] as const
         ).map((item) => (
           <button
@@ -1326,7 +1334,7 @@ function Cadastros() {
             )}
           </Lista>
         </>
-      ) : (
+      ) : aba === "Parceiros" ? (
         <>
           <section
             style={
@@ -1519,6 +1527,12 @@ function Cadastros() {
             )}
           </Lista>
         </>
+      ) : (
+        <Escolas
+          parceiros={
+            dados.parceiros
+          }
+        />
       )}
     </div>
   );
