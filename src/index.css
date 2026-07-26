@@ -107,3 +107,228 @@ textarea:focus-visible {
 .tabela-scroll::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
+
+.erp-topo-mobile,
+.erp-menu-mobile-fundo {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .erp-app {
+    display: block !important;
+    padding-top: 68px;
+  }
+
+  .erp-topo-mobile {
+    position: fixed;
+    z-index: 1100;
+    inset: 0 0 auto;
+    height: 68px;
+    display: grid;
+    grid-template-columns: 46px 88px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    color: #fff;
+    background: #101a2d;
+    box-shadow: 0 4px 18px rgba(15, 23, 42, 0.24);
+  }
+
+  .erp-topo-mobile img {
+    display: block;
+    width: 82px;
+    max-height: 46px;
+    object-fit: contain;
+  }
+
+  .erp-topo-mobile div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .erp-topo-mobile strong,
+  .erp-topo-mobile span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .erp-topo-mobile strong {
+    font-size: 15px;
+  }
+
+  .erp-topo-mobile span {
+    color: #cbd5e1;
+    font-size: 12px;
+  }
+
+  .erp-menu-mobile-botao {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-content: center;
+    gap: 5px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 10px;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+  }
+
+  .erp-menu-mobile-botao span {
+    width: 21px;
+    height: 2px;
+    display: block;
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  .erp-menu-mobile-fundo {
+    position: fixed;
+    z-index: 1190;
+    inset: 68px 0 0;
+    display: block;
+    width: 100%;
+    border: 0;
+    background: rgba(15, 23, 42, 0.58);
+    backdrop-filter: blur(2px);
+  }
+
+  .erp-sidebar {
+    position: fixed !important;
+    z-index: 1200;
+    top: 68px;
+    bottom: 0;
+    left: 0;
+    width: min(86vw, 320px) !important;
+    min-height: 0 !important;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 22px 18px 32px !important;
+    transform: translateX(-105%);
+    transition: transform 220ms ease;
+    box-shadow: 14px 0 35px rgba(15, 23, 42, 0.3);
+  }
+
+  .erp-sidebar-aberta {
+    transform: translateX(0);
+  }
+
+  .erp-sidebar nav button {
+    min-height: 46px;
+  }
+
+  .erp-conteudo {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 18px 14px 34px !important;
+    overflow: visible !important;
+  }
+
+  .erp-conteudo > header,
+  .erp-conteudo section > header {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+  }
+
+  .erp-conteudo h1 {
+    font-size: clamp(25px, 7vw, 32px) !important;
+    line-height: 1.15;
+  }
+
+  .erp-conteudo h2 {
+    font-size: clamp(21px, 5.8vw, 27px) !important;
+    line-height: 1.2;
+  }
+
+  .erp-conteudo [style*="grid-template-columns"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .erp-conteudo [style*="justify-content: space-between"] {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .erp-conteudo section,
+  .erp-conteudo section > div,
+  .erp-conteudo form,
+  .erp-conteudo form > div {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .erp-conteudo input,
+  .erp-conteudo select,
+  .erp-conteudo textarea {
+    min-height: 46px;
+    max-width: 100%;
+    font-size: 16px !important;
+  }
+
+  .erp-conteudo button,
+  .erp-conteudo label {
+    max-width: 100%;
+  }
+
+  .erp-conteudo button {
+    min-height: 44px;
+  }
+
+  .tabela-scroll {
+    width: calc(100vw - 28px) !important;
+    max-width: calc(100vw - 28px) !important;
+    overflow-x: auto !important;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tabela-scroll::after {
+    content: "Deslize para o lado para ver todas as colunas";
+    position: sticky;
+    left: 0;
+    display: block;
+    width: max-content;
+    padding: 8px 2px 2px;
+    color: #64748b;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .erp-topo-mobile {
+    grid-template-columns: 44px 70px minmax(0, 1fr);
+    padding-inline: 10px;
+  }
+
+  .erp-topo-mobile img {
+    width: 66px;
+  }
+
+  .erp-conteudo {
+    padding-inline: 10px !important;
+  }
+
+  .erp-conteudo section,
+  .erp-conteudo [style*="border-radius"] {
+    border-radius: 12px !important;
+  }
+
+  .erp-conteudo [style*="padding: 28px"],
+  .erp-conteudo [style*="padding: 25px"] {
+    padding: 18px !important;
+  }
+
+  .tabela-scroll {
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+  }
+}
