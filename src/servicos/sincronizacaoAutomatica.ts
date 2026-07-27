@@ -2,11 +2,16 @@ import {
   supabase,
   supabaseConfigurado,
 } from "../lib/supabase";
+import type { Perfil } from "../Acesso";
+import type { Conta } from "../Contas";
+import {
+  carregarContasEstruturadas,
+  sincronizarContasLocais,
+} from "./contasEstruturadas";
 
 const CHAVES_COMPARTILHADAS = [
   "financeiro-cedep-lancamentos",
   "financeiro-cedep-importacoes",
-  "financeiro-cedep-contas",
   "financeiro-cedep-configuracoes",
   "financeiro-cedep-cadastros",
   "financeiro-cedep-escolas",
@@ -116,12 +121,42 @@ const enviarRegistrosLocais =
 
 export async function prepararSincronizacaoInicial(
   usuarioId: string,
-  podeEditar: boolean
+  podeEditar: boolean,
+  perfil: Perfil
 ) {
   const cliente =
     clienteObrigatorio();
   const marcador =
     `erp-sync-inicial-${usuarioId}`;
+
+  const contasLocais = (
+    lerValorLocal(
+      "financeiro-cedep-contas"
+    ) ?? []
+  ) as Conta[];
+
+  if (
+    podeEditar &&
+    contasLocais.length > 0
+  ) {
+    await sincronizarContasLocais({
+      contas: contasLocais,
+      usuarioId,
+      perfil,
+    });
+  }
+
+  const contasNuvem =
+    await carregarContasEstruturadas();
+  if (
+    contasNuvem &&
+    contasNuvem.length > 0
+  ) {
+    salvarValorLocal(
+      "financeiro-cedep-contas",
+      contasNuvem
+    );
+  }
 
   if (
     sessionStorage.getItem(
@@ -208,7 +243,8 @@ export async function prepararSincronizacaoInicial(
 
 export function iniciarSincronizacaoAutomatica(
   usuarioId: string,
-  podeEditar: boolean
+  podeEditar: boolean,
+  perfil: Perfil
 ) {
   if (
     !supabaseConfigurado ||
@@ -222,6 +258,12 @@ export function iniciarSincronizacaoAutomatica(
   const conhecidos =
     new Map<string, string>();
   let enviando = false;
+  let contasConhecidas =
+    serializar(
+      lerValorLocal(
+        "financeiro-cedep-contas"
+      )
+    );
 
   CHAVES_COMPARTILHADAS.forEach(
     (chave) => {
@@ -236,6 +278,27 @@ export function iniciarSincronizacaoAutomatica(
 
   const sincronizar = async () => {
     if (enviando) return;
+
+    const contasAtuais =
+      lerValorLocal(
+        "financeiro-cedep-contas"
+      ) as Conta[] | undefined;
+    const contasSerializadas =
+      serializar(contasAtuais);
+
+    if (
+      contasAtuais &&
+      contasSerializadas !==
+        contasConhecidas
+    ) {
+      contasConhecidas =
+        contasSerializadas;
+      await sincronizarContasLocais({
+        contas: contasAtuais,
+        usuarioId,
+        perfil,
+      });
+    }
 
     const alterados =
       CHAVES_COMPARTILHADAS.flatMap(

@@ -39,6 +39,7 @@ export const MODULOS_ERP = [
   "Cadastros",
   "Professores",
   "Mensalidades",
+  "Matrículas e Turmas",
   "Secretaria e Caixa",
   "Documentos",
   "Receitas",
@@ -48,6 +49,7 @@ export const MODULOS_ERP = [
   "Bancos",
   "Importar Excel",
   "Relatórios",
+  "Gestão e Fechamento",
   "Configurações",
   "Nuvem e Backup",
   "Usuários",
@@ -70,6 +72,7 @@ const permissoesPerfil = (
       "Bancos",
       "Importar Excel",
       "Relatórios",
+      "Gestão e Fechamento",
     ];
   }
 
@@ -79,6 +82,7 @@ const permissoesPerfil = (
       "Cadastros",
       "Professores",
       "Mensalidades",
+      "Matrículas e Turmas",
       "Secretaria e Caixa",
       "Documentos",
       "Contas a Receber",
@@ -193,7 +197,7 @@ export async function carregarUsuarioOnline():
   } = await supabase
     .from("profiles")
     .select(
-      "nome, perfil, ativo"
+      "nome, perfil, ativo, permissoes"
     )
     .eq(
       "id",
@@ -228,9 +232,10 @@ export async function carregarUsuarioOnline():
       "",
     perfil: perfilERP,
     permissoes:
-      permissoesPerfil(
-        perfilERP
-      ),
+      Array.isArray(perfil.permissoes) &&
+      perfil.permissoes.length > 0
+        ? perfil.permissoes
+        : permissoesPerfil(perfilERP),
     ativo: true,
   };
 }
@@ -258,6 +263,86 @@ export function TelaLoginOnline({
     useState("");
   const [processando, setProcessando] =
     useState(false);
+  const [recuperando, setRecuperando] =
+    useState(false);
+  const [novaSenha, setNovaSenha] =
+    useState("");
+  const [confirmacao, setConfirmacao] =
+    useState("");
+
+  useEffect(() => {
+    if (!supabase) return;
+    const { data } =
+      supabase.auth.onAuthStateChange(
+        (evento) => {
+          if (evento === "PASSWORD_RECOVERY") {
+            setRecuperando(true);
+            setMensagem(
+              "Crie agora sua nova senha."
+            );
+          }
+        }
+      );
+    return () =>
+      data.subscription.unsubscribe();
+  }, []);
+
+  const solicitarRecuperacao =
+    async () => {
+      if (!supabase || !email.trim()) {
+        setMensagem(
+          "Informe seu e-mail para receber o link."
+        );
+        return;
+      }
+      setProcessando(true);
+      const { error } =
+        await supabase.auth
+          .resetPasswordForEmail(
+            email.trim(),
+            {
+              redirectTo:
+                window.location.origin,
+            }
+          );
+      setProcessando(false);
+      setMensagem(
+        error
+          ? error.message
+          : "Enviamos um link de recuperação para seu e-mail."
+      );
+    };
+
+  const salvarNovaSenha =
+    async () => {
+      if (
+        !supabase ||
+        novaSenha.length < 8 ||
+        novaSenha !== confirmacao
+      ) {
+        setMensagem(
+          "Use pelo menos 8 caracteres e confirme a mesma senha."
+        );
+        return;
+      }
+      setProcessando(true);
+      const { error } =
+        await supabase.auth.updateUser({
+          password: novaSenha,
+        });
+      setProcessando(false);
+      if (error) {
+        setMensagem(error.message);
+        return;
+      }
+      setRecuperando(false);
+      setNovaSenha("");
+      setConfirmacao("");
+      setMensagem(
+        "Senha atualizada. Você já pode entrar."
+      );
+      await supabase.auth.signOut();
+    };
 
   const entrar = async () => {
     if (
@@ -316,36 +401,79 @@ export function TelaLoginOnline({
           alt="CEDEP Cursos"
           style={estilos.logo}
         />
-        <h1>Entrar no ERP</h1>
+        <h1>
+          {recuperando
+            ? "Criar nova senha"
+            : "Entrar no ERP"}
+        </h1>
         <p style={estilos.textoCinza}>
           Use seu e-mail e sua senha online.
         </p>
-        <Campo
-          label="E-mail"
-          value={email}
-          onChange={setEmail}
-        />
-        <Campo
-          label="Senha"
-          type="password"
-          value={senha}
-          onChange={setSenha}
-          enter={entrar}
-        />
+        {recuperando ? (
+          <>
+            <Campo
+              label="Nova senha"
+              type="password"
+              value={novaSenha}
+              onChange={setNovaSenha}
+            />
+            <Campo
+              label="Confirmar nova senha"
+              type="password"
+              value={confirmacao}
+              onChange={setConfirmacao}
+              enter={salvarNovaSenha}
+            />
+          </>
+        ) : (
+          <>
+            <Campo
+              label="E-mail"
+              value={email}
+              onChange={setEmail}
+            />
+            <Campo
+              label="Senha"
+              type="password"
+              value={senha}
+              onChange={setSenha}
+              enter={entrar}
+            />
+          </>
+        )}
         {mensagem && (
           <div style={estilos.mensagem}>
             {mensagem}
           </div>
         )}
         <button
-          onClick={entrar}
+          onClick={
+            recuperando
+              ? salvarNovaSenha
+              : entrar
+          }
           disabled={processando}
           style={estilos.botaoPrincipal}
         >
           {processando
-            ? "Entrando..."
-            : "Entrar"}
+            ? "Aguarde..."
+            : recuperando
+              ? "Salvar nova senha"
+              : "Entrar"}
         </button>
+        {!recuperando && (
+          <button
+            onClick={
+              solicitarRecuperacao
+            }
+            disabled={processando}
+            style={
+              estilos.botaoLink
+            }
+          >
+            Esqueci minha senha
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1094,6 +1222,17 @@ const estilos: Record<
     border: "none",
     borderRadius: 9,
     padding: "13px 20px",
+    cursor: "pointer",
+    fontWeight: "bold",
+  },
+  botaoLink: {
+    display: "block",
+    width: "100%",
+    marginTop: 12,
+    background: "transparent",
+    color: "#1d4ed8",
+    border: "none",
+    padding: 10,
     cursor: "pointer",
     fontWeight: "bold",
   },
