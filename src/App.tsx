@@ -23,6 +23,9 @@ import Documentos from "./Documentos";
 import Nuvem from "./Nuvem";
 import Academico from "./Academico";
 import GestaoFinanceira from "./GestaoFinanceira";
+import CompromissosMensais, {
+  type PagamentoCompromisso,
+} from "./CompromissosMensais";
 import {
   TelaLogin,
   TelaLoginOnline,
@@ -75,6 +78,27 @@ type Lancamento = {
 
   origem?: "manual" | "excel";
 };
+
+type DespesaPessoalResumo = {
+  id: string;
+  competencia: string;
+  valorPrevisto: number;
+  valorPago: number;
+  status: string;
+};
+
+const carregarDespesasPessoais =
+  (): DespesaPessoalResumo[] => {
+    try {
+      return JSON.parse(
+        localStorage.getItem(
+          "financeiro-cedep-despesas-pessoais"
+        ) ?? "[]"
+      );
+    } catch {
+      return [];
+    }
+  };
 
 type ImportacaoSalva = {
   nomeArquivo: string;
@@ -395,6 +419,30 @@ function App() {
     useState<Lancamento[]>(
       []
     );
+
+  const [
+    despesasPessoais,
+    setDespesasPessoais,
+  ] =
+    useState<DespesaPessoalResumo[]>(
+      carregarDespesasPessoais
+    );
+
+  useEffect(() => {
+    const atualizar = () =>
+      setDespesasPessoais(
+        carregarDespesasPessoais()
+      );
+    window.addEventListener(
+      "financeiro-despesas-pessoais-atualizadas",
+      atualizar
+    );
+    return () =>
+      window.removeEventListener(
+        "financeiro-despesas-pessoais-atualizadas",
+        atualizar
+      );
+  }, []);
 
   const [
     preVisualizacao,
@@ -766,6 +814,28 @@ function App() {
   const saldoDashboard =
     entradasDashboard -
     saidasDashboard;
+
+  const despesasPessoaisDashboard =
+    despesasPessoais
+      .filter(
+        (item) =>
+          item.status !==
+            "Dispensado" &&
+          (competenciaDashboard ===
+            "Todas" ||
+            item.competencia ===
+              competenciaDashboard)
+      )
+      .reduce(
+        (total, item) =>
+          total +
+          Number(item.valorPrevisto),
+        0
+      );
+
+  const saldoRealDashboard =
+    saldoDashboard -
+    despesasPessoaisDashboard;
 
   const fluxoDashboard =
     useMemo<PontoFluxo[]>(() => {
@@ -1684,6 +1754,46 @@ function App() {
       );
     };
 
+  const registrarPagamentoCompromisso =
+    (
+      pagamento:
+        PagamentoCompromisso
+    ) => {
+      const novoLancamento: Lancamento =
+        {
+          id: pagamento.id,
+          dia:
+            diaDaData(
+              pagamento.data
+            ),
+          data: pagamento.data,
+          competencia:
+            competenciaDaData(
+              pagamento.data
+            ),
+          descricao:
+            pagamento.descricao,
+          tipoEntrada: "",
+          tipoSaida:
+            pagamento.categoria,
+          formaPagamento:
+            pagamento.banco,
+          entrada: 0,
+          saida:
+            pagamento.valor,
+          unidade:
+            pagamento.unidade,
+          origem: "manual",
+        };
+
+      setLancamentos(
+        (atuais) => [
+          ...atuais,
+          novoLancamento,
+        ]
+      );
+    };
+
   /* =======================================================
      ZERAR LANÇAMENTOS
   ======================================================= */
@@ -1817,6 +1927,8 @@ function App() {
     "Contas a Receber",
 
     "Contas a Pagar",
+
+    "Compromissos Mensais",
 
     "Bancos",
 
@@ -2222,6 +2334,20 @@ function App() {
                 titulo="Lançamentos"
                 valor={String(
                   lancamentosDashboard.length
+                )}
+              />
+
+              <Card
+                titulo="Despesas pessoais previstas"
+                valor={moeda(
+                  despesasPessoaisDashboard
+                )}
+              />
+
+              <Card
+                titulo="Saldo real após pessoais"
+                valor={moeda(
+                  saldoRealDashboard
                 )}
               />
             </section>
@@ -3130,6 +3256,18 @@ function App() {
           <Relatorios
             lancamentos={
               lancamentos
+            }
+          />
+        )}
+
+        {pagina ===
+          "Compromissos Mensais" && (
+          <CompromissosMensais
+            usuarioAtual={
+              usuarioAtual
+            }
+            onRegistrarPagamento={
+              registrarPagamentoCompromisso
             }
           />
         )}
