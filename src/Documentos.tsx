@@ -507,9 +507,29 @@ function Documentos() {
     useState("");
   const [inicioContrato, setInicioContrato] =
     useState("");
+  const [
+    terminoContrato,
+    setTerminoContrato,
+  ] = useState("");
+  const [
+    diaVencimentoContrato,
+    setDiaVencimentoContrato,
+  ] = useState("10");
+  const [
+    enderecoContrato,
+    setEnderecoContrato,
+  ] = useState("");
+  const [
+    cidadeContrato,
+    setCidadeContrato,
+  ] = useState("Astorga - PR");
+  const [
+    autorizacaoImagem,
+    setAutorizacaoImagem,
+  ] = useState("Não autorizo");
   const [clausulas, setClausulas] =
     useState(
-      "O contratante declara estar de acordo com o plano, os valores, os vencimentos e as normas acadêmicas da instituição."
+      ""
     );
 
   const [alunoCarne, setAlunoCarne] =
@@ -684,48 +704,194 @@ function Documentos() {
     if (
       !aluno ||
       !plano ||
-      !inicioContrato
+      !inicioContrato ||
+      !terminoContrato
     ) {
       alert(
-        "Selecione aluno, plano e data de início."
+        "Selecione aluno, plano e informe as datas de início e término."
       );
       return;
     }
+
+    const parcelas =
+      aluno.parcelas ||
+      plano.parcelas;
+    const valorMensal =
+      aluno.valorMensalidade ||
+      plano.valor;
+    const valorTabela =
+      aluno.valorTabela ||
+      plano.valor;
+    const desconto =
+      aluno.desconto || 0;
+    const valorTotal =
+      valorMensal * parcelas;
 
     abrirDocumento(
       `Contrato - ${aluno.nome}`,
       `
         ${cabecalho("Contrato de Prestação de Serviços Educacionais")}
+        <p>
+          Pelo presente instrumento particular, de um lado
+          <strong>NELSON LUIS ORSI DE PAIVA CENTRO DE ESTUDOS E TREINAMENTOS</strong>,
+          inscrita no CNPJ sob nº <strong>23.014.836/0001-40</strong>,
+          com sede na Rua Minas Gerais, 263, Centro, Astorga/PR, doravante denominada
+          <strong>CONTRATADA</strong>; e, de outro, o responsável financeiro identificado
+          abaixo, doravante denominado <strong>CONTRATANTE</strong>, celebram o presente
+          contrato, regido pelas condições seguintes e pela legislação aplicável.
+        </p>
+
         <h2>Identificação das partes</h2>
         <div class="box grid">
           <div><strong>Aluno:</strong> ${escapar(aluno.nome)}</div>
           <div><strong>CPF:</strong> ${escapar(aluno.cpf)}</div>
+          <div><strong>Data de nascimento:</strong> ${escapar(formatarData(aluno.nascimento))}</div>
           <div><strong>Responsável:</strong> ${escapar(aluno.responsavelNome || aluno.nome)}</div>
           <div><strong>CPF do responsável:</strong> ${escapar(aluno.responsavelCpf || aluno.cpf)}</div>
           <div><strong>Telefone:</strong> ${escapar(aluno.responsavelTelefone || aluno.telefone)}</div>
+          <div><strong>E-mail:</strong> ${escapar(aluno.email)}</div>
+          <div><strong>Endereço:</strong> ${escapar(enderecoContrato || "Não informado")}</div>
+          <div><strong>Cidade/UF:</strong> ${escapar(cidadeContrato || "Não informada")}</div>
           <div><strong>Unidade:</strong> ${escapar(aluno.unidade)}</div>
         </div>
 
-        <h2>Plano contratado</h2>
+        <h2>Quadro-resumo do serviço contratado</h2>
         <div class="box grid">
           <div><strong>Plano:</strong> ${escapar(aluno.planoNome || plano.nome)}</div>
           <div><strong>Curso:</strong> ${escapar(aluno.curso || plano.curso)}</div>
           <div><strong>Início:</strong> ${escapar(formatarData(inicioContrato))}</div>
-          <div><strong>Condição:</strong> ${aluno.parcelas || plano.parcelas} parcela(s) de ${escapar(moeda(aluno.valorMensalidade || plano.valor))}</div>
-          <div><strong>Valor padrão:</strong> ${escapar(moeda(aluno.valorTabela || plano.valor))}</div>
-          <div><strong>Desconto mensal:</strong> ${escapar(moeda(aluno.desconto || 0))}</div>
-          <div><strong>Valor total:</strong> ${escapar(moeda((aluno.valorMensalidade || plano.valor) * (aluno.parcelas || plano.parcelas)))}</div>
+          <div><strong>Término previsto:</strong> ${escapar(formatarData(terminoContrato))}</div>
+          <div><strong>Condição:</strong> ${parcelas} parcela(s) de ${escapar(moeda(valorMensal))}</div>
+          <div><strong>Vencimento:</strong> dia ${escapar(diaVencimentoContrato)} de cada mês</div>
+          <div><strong>Valor padrão:</strong> ${escapar(moeda(valorTabela))}</div>
+          <div><strong>Desconto mensal:</strong> ${escapar(moeda(desconto))}</div>
+          <div><strong>Valor total contratado:</strong> ${escapar(moeda(valorTotal))}</div>
           <div><strong>Banco/conta:</strong> ${escapar(aluno.bancoMensalidade || plano.banco)}</div>
         </div>
 
-        <h2>Condições</h2>
-        <p>${escapar(clausulas).replaceAll("\n", "<br />")}</p>
+        <h2>Cláusula 1ª - Objeto e natureza do serviço</h2>
+        <p>
+          A CONTRATADA prestará os serviços educacionais correspondentes ao curso e ao
+          período indicados no quadro-resumo, conforme planejamento pedagógico, calendário,
+          carga horária, corpo docente e metodologia definidos pela instituição. A contratação
+          não constitui promessa de aprovação em vestibular, concurso ou exame, pois o resultado
+          depende também da participação, frequência e desempenho individual do aluno.
+        </p>
 
-        <p>Firmam o presente instrumento em ${escapar(new Date().toLocaleDateString("pt-BR"))}.</p>
+        <h2>Cláusula 2ª - Organização das aulas e deveres acadêmicos</h2>
+        <p>
+          As aulas poderão ser ministradas nas dependências da CONTRATADA ou em outro local
+          previamente comunicado, de forma presencial ou por recurso tecnológico compatível
+          com o plano contratado. O aluno deverá respeitar horários, professores, colegas,
+          instalações, normas de convivência e orientações acadêmicas. Faltas do aluno não
+          geram abatimento, salvo reposição ou compensação expressamente oferecida pela CONTRATADA.
+        </p>
+
+        <h2>Cláusula 3ª - Preço, parcelas e desconto</h2>
+        <p>
+          O CONTRATANTE pagará o valor total indicado no quadro-resumo, dividido nas parcelas
+          ali especificadas. O desconto informado integra a condição comercial individual deste
+          contrato. Quando identificado como desconto de pontualidade, sua manutenção dependerá
+          do pagamento até o vencimento, sem alterar o valor total de referência expressamente
+          informado ao CONTRATANTE.
+        </p>
+
+        <h2>Cláusula 4ª - Atraso e cobrança</h2>
+        <p>
+          Sobre parcela vencida poderão incidir multa moratória de até 2% e juros de mora de
+          1% ao mês, calculados proporcionalmente aos dias de atraso, além de atualização
+          monetária quando legalmente aplicável. A cobrança e eventual comunicação aos órgãos
+          de proteção ao crédito somente poderão ocorrer após o vencimento, mediante observância
+          da legislação e da notificação prévia cabível, sem exposição do aluno a constrangimento.
+        </p>
+
+        <h2>Cláusula 5ª - Cancelamento e desistência</h2>
+        <p>
+          O cancelamento deverá ser solicitado por escrito pelo aluno maior de idade ou pelo
+          responsável legal. Serão devidos os valores vencidos, os serviços efetivamente prestados
+          até a data de encerramento e materiais individuais já entregues. Não haverá cobrança
+          automática das mensalidades posteriores à efetivação do cancelamento. Eventual custo
+          administrativo deverá ser previamente informado, proporcional e compatível com os
+          prejuízos efetivamente suportados, respeitada a legislação de proteção do consumidor.
+        </p>
+        <p>
+          Quando a contratação ocorrer fora do estabelecimento comercial ou por meio eletrônico,
+          será assegurado o direito de arrependimento no prazo legal. O pedido deverá ser
+          protocolado por canal que permita comprovar a data da solicitação.
+        </p>
+
+        <h2>Cláusula 6ª - Material didático e bens pessoais</h2>
+        <p>
+          Materiais individuais, quando contratados, serão discriminados separadamente. Não será
+          exigido material de uso coletivo como cobrança adicional. A CONTRATADA não responde por
+          objetos pessoais deixados nas dependências, salvo quando o dano decorrer de ação ou
+          omissão comprovada de seus prepostos.
+        </p>
+
+        <h2>Cláusula 7ª - Proteção de dados pessoais</h2>
+        <p>
+          Os dados do aluno e do responsável serão tratados para matrícula, execução do contrato,
+          comunicação acadêmica e financeira, cumprimento de obrigações legais e exercício regular
+          de direitos. O acesso será limitado a pessoas autorizadas e os dados serão conservados
+          pelo período necessário às finalidades informadas e aos prazos legais. O titular poderá
+          solicitar informações, correção e demais direitos pelos canais oficiais da CONTRATADA.
+        </p>
+
+        <h2>Cláusula 8ª - Uso de imagem e voz</h2>
+        <div class="box">
+          <strong>Opção do CONTRATANTE: ${escapar(autorizacaoImagem)}</strong>
+          <p>
+            A autorização, quando concedida, limita-se à divulgação institucional e acadêmica do
+            CEDEP, sem uso ofensivo ou incompatível com essa finalidade. É gratuita, específica
+            e poderá ser revogada para utilizações futuras mediante solicitação escrita, sem
+            afetar materiais legitimamente produzidos antes da revogação. A recusa não prejudica
+            a matrícula nem a prestação do serviço.
+          </p>
+        </div>
+
+        <h2>Cláusula 9ª - Comunicações e documentos</h2>
+        <p>
+          Comunicações acadêmicas e financeiras poderão ser realizadas pelos telefones, e-mails
+          e aplicativos informados no cadastro. O CONTRATANTE deverá manter seus dados atualizados.
+          Contrato, carnê, recibos e avisos poderão ser disponibilizados em meio físico ou eletrônico.
+        </p>
+
+        <h2>Cláusula 10ª - Disposições gerais</h2>
+        <p>
+          Eventual tolerância não representa renúncia de direito. Se alguma disposição for
+          considerada inválida, as demais permanecerão vigentes. Fica assegurado ao consumidor
+          o acesso aos órgãos de defesa e ao foro legalmente competente, inclusive o de seu
+          domicílio quando aplicável.
+        </p>
+
+        ${
+          clausulas.trim()
+            ? `
+              <h2>Condições adicionais individualizadas</h2>
+              <p>${escapar(clausulas).replaceAll("\n", "<br />")}</p>
+            `
+            : ""
+        }
+
+        <h2>Anexo - Normas essenciais de convivência</h2>
+        <p>
+          O aluno compromete-se a cumprir os horários; seguir as orientações do corpo docente;
+          tratar colegas e colaboradores com respeito; preservar móveis, equipamentos e materiais;
+          e observar as regras de segurança e a proibição de fumar nas dependências da instituição.
+          Danos causados com dolo ou culpa poderão ser objeto de reparação, após apuração.
+        </p>
+
+        <p>
+          As partes declaram ter lido o quadro-resumo e todas as cláusulas, recebendo uma via
+          deste instrumento. Firmam o presente contrato em
+          ${escapar(new Date().toLocaleDateString("pt-BR"))}.
+        </p>
 
         <div class="assinaturas">
-          <div class="assinatura">CEDEP Cursos</div>
-          <div class="assinatura">${escapar(aluno.responsavelNome || aluno.nome)}</div>
+          <div class="assinatura">CONTRATANTE: ${escapar(aluno.responsavelNome || aluno.nome)}</div>
+          <div class="assinatura">CONTRATADA: CEDEP Cursos</div>
+          <div class="assinatura">Testemunha 1 - Nome e CPF</div>
+          <div class="assinatura">Testemunha 2 - Nome e CPF</div>
         </div>
       `
     );
@@ -1070,6 +1236,68 @@ function Documentos() {
                   setInicioContrato
                 }
               />
+              <CampoData
+                label="Data de término prevista"
+                value={
+                  terminoContrato
+                }
+                onChange={
+                  setTerminoContrato
+                }
+              />
+              <CampoTexto
+                label="Dia de vencimento"
+                value={
+                  diaVencimentoContrato
+                }
+                placeholder="Ex.: 10"
+                onChange={
+                  setDiaVencimentoContrato
+                }
+              />
+              <CampoTexto
+                label="Endereço do aluno/responsável"
+                value={
+                  enderecoContrato
+                }
+                placeholder="Rua, número, bairro e CEP"
+                onChange={
+                  setEnderecoContrato
+                }
+              />
+              <CampoTexto
+                label="Cidade / UF"
+                value={
+                  cidadeContrato
+                }
+                placeholder="Ex.: Astorga - PR"
+                onChange={
+                  setCidadeContrato
+                }
+              />
+              <CampoSelect
+                label="Autorização de imagem e voz"
+                value={
+                  autorizacaoImagem
+                }
+                opcoes={[
+                  {
+                    valor:
+                      "Não autorizo",
+                    rotulo:
+                      "Não autorizo",
+                  },
+                  {
+                    valor:
+                      "Autorizo",
+                    rotulo:
+                      "Autorizo",
+                  },
+                ]}
+                onChange={
+                  setAutorizacaoImagem
+                }
+              />
             </div>
             <label
               style={
@@ -1077,7 +1305,7 @@ function Documentos() {
               }
             >
               <strong>
-                Condições do contrato
+                Condições adicionais individualizadas (opcional)
               </strong>
               <textarea
                 value={clausulas}
@@ -1086,7 +1314,8 @@ function Documentos() {
                     evento.target.value
                   )
                 }
-                rows={5}
+                rows={4}
+                placeholder="Use apenas para condições específicas deste aluno que não estejam no modelo padrão."
                 style={
                   estilos.input
                 }
