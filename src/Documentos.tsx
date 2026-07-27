@@ -284,8 +284,9 @@ const abrirDocumento = (
           }
           .folha-carne {
             min-height: 255mm;
-            display: flex;
-            flex-direction: column;
+            display: grid;
+            align-content: start;
+            gap: 5mm;
             break-after: page;
             page-break-after: always;
           }
@@ -293,64 +294,165 @@ const abrirDocumento = (
             break-after: auto;
             page-break-after: auto;
           }
-          .cabecalho-carne {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 15px;
-            padding-bottom: 8px;
-            margin-bottom: 8px;
-            border-bottom: 2px solid #ed232b;
-          }
-          .cabecalho-carne img {
-            width: 105px;
-            height: auto;
-          }
-          .cabecalho-carne h2 {
-            margin: 0;
-            font-size: 15pt;
-          }
           .grade-carne {
-            flex: 1;
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            grid-template-rows: repeat(2, minmax(0, 1fr));
-            gap: 7mm;
+            gap: 5mm;
           }
           .parcela-carne {
             min-width: 0;
             overflow: hidden;
             break-inside: avoid;
-            border: 1px dashed #657084;
-            border-radius: 7px;
-            padding: 9px;
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 92px;
-            gap: 8px;
-            align-items: start;
-            font-size: 9.5pt;
-            line-height: 1.35;
+            grid-template-columns: 58mm minmax(0, 1fr);
+            border: 1.5px solid #172033;
+            background: white;
+            font-size: 9pt;
+            line-height: 1.2;
           }
-          .parcela-carne h3 {
-            margin: 0 0 6px;
+          .canhoto,
+          .via-escola {
+            min-width: 0;
+          }
+          .canhoto {
+            display: flex;
+            flex-direction: column;
+            border-right: 1px dashed #172033;
+          }
+          .via-escola {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 33mm;
+          }
+          .campo-carne {
+            min-width: 0;
+            padding: 3px 5px;
+            border-bottom: 1px solid #9ca3af;
+          }
+          .campo-carne small {
+            display: block;
+            color: #475569;
+            font-size: 6.8pt;
+            line-height: 1.1;
+          }
+          .campo-carne strong {
+            display: block;
+            overflow-wrap: anywhere;
+            font-size: 9pt;
+          }
+          .nome-aluno strong,
+          .curso-carne strong {
+            font-size: 11pt;
+            text-transform: uppercase;
+          }
+          .duas-colunas {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+          }
+          .tres-colunas {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+          }
+          .duas-colunas > *,
+          .tres-colunas > * {
+            border-right: 1px solid #9ca3af;
+          }
+          .duas-colunas > *:last-child,
+          .tres-colunas > *:last-child {
+            border-right: 0;
+          }
+          .valor-carne strong {
             font-size: 12pt;
-          }
-          .parcela-carne p {
-            margin: 3px 0;
-          }
-          .parcela-carne .valor {
-            color: #101a2d;
-            font-size: 14pt;
             font-weight: bold;
           }
+          .rodape-canhoto {
+            margin-top: auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 5px;
+          }
+          .rodape-canhoto img {
+            width: 70px;
+            height: auto;
+          }
+          .via-cliente {
+            font-size: 9pt;
+            font-weight: 800;
+          }
+          .dados-principais {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+          }
+          .instrucoes {
+            padding: 5px;
+            font-size: 7.5pt;
+            line-height: 1.25;
+          }
+          .instrucoes p {
+            margin: 2px 0;
+          }
+          .pagamento {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            border-left: 1px solid #9ca3af;
+            text-align: center;
+          }
           .qr-pix {
-            width: 92px;
-            height: 92px;
+            width: 27mm;
+            height: 27mm;
+            margin: 3px auto;
           }
           .pix-chave {
-            margin-top: 4px;
-            font-size: 7.5pt;
+            padding: 2px 4px;
+            font-size: 6.6pt;
             overflow-wrap: anywhere;
+            text-align: center;
+          }
+          .total-pago {
+            min-height: 12mm;
+            padding: 3px;
+            border-top: 1px solid #9ca3af;
+            text-align: left;
+          }
+          .total-pago small {
+            display: block;
+            color: #475569;
+            font-size: 6.8pt;
+          }
+          .folha-carne.compacto {
+            grid-template-columns: 1fr;
+            gap: 3mm;
+          }
+          .folha-carne.compacto .grade-carne {
+            gap: 3mm;
+          }
+          .folha-carne.compacto .parcela-carne {
+            grid-template-columns: 50mm minmax(0, 1fr);
+            font-size: 7.5pt;
+          }
+          .folha-carne.compacto .campo-carne {
+            padding: 2px 4px;
+          }
+          .folha-carne.compacto .campo-carne strong {
+            font-size: 7.5pt;
+          }
+          .folha-carne.compacto .nome-aluno strong,
+          .folha-carne.compacto .curso-carne strong {
+            font-size: 8.5pt;
+          }
+          .folha-carne.compacto .qr-pix {
+            width: 19mm;
+            height: 19mm;
+          }
+          .folha-carne.compacto .instrucoes {
+            font-size: 6.6pt;
+          }
+          .linha-corte {
+            margin: -2.5mm 0;
+            color: #64748b;
+            font-size: 6pt;
+            letter-spacing: 1px;
             text-align: center;
           }
           .total {
@@ -412,6 +514,10 @@ function Documentos() {
 
   const [alunoCarne, setAlunoCarne] =
     useState("");
+  const [
+    parcelasPorFolha,
+    setParcelasPorFolha,
+  ] = useState<2 | 4>(2);
   const [
     configuracaoPix,
     setConfiguracaoPix,
@@ -656,13 +762,6 @@ function Documentos() {
       return;
     }
 
-    const total =
-      contasCarne.reduce(
-        (soma, item) =>
-          soma + item.valor,
-        0
-      );
-
     const parcelasComQr =
       await Promise.all(
         contasCarne.map(
@@ -700,16 +799,22 @@ function Documentos() {
       {
         length: Math.ceil(
           parcelasComQr.length /
-            4
+            parcelasPorFolha
         ),
       },
       (_, indiceFolha) =>
         parcelasComQr.slice(
-          indiceFolha * 4,
-          indiceFolha * 4 +
-            4
+          indiceFolha *
+            parcelasPorFolha,
+          indiceFolha *
+            parcelasPorFolha +
+            parcelasPorFolha
         )
     );
+    const dataEmissao =
+      new Date().toLocaleDateString(
+        "pt-BR"
+      );
 
     abrirDocumento(
       `Carnê - ${aluno.nome}`,
@@ -720,15 +825,7 @@ function Documentos() {
               folha,
               indiceFolha
             ) => `
-              <section class="folha-carne">
-                <div class="cabecalho-carne">
-                  <img src="${window.location.origin}/logo-cedep.png" alt="CEDEP Cursos" />
-                  <div>
-                    <h2>Carnê de Mensalidades</h2>
-                    <div><strong>${escapar(aluno.nome)}</strong> • ${escapar(aluno.curso || "Curso não informado")}</div>
-                    <small>Folha ${indiceFolha + 1}/${folhas.length} • Total do carnê: ${escapar(moeda(total))}</small>
-                  </div>
-                </div>
+              <section class="folha-carne ${parcelasPorFolha === 4 ? "compacto" : ""}">
                 <div class="grade-carne">
                   ${folha
                     .map(
@@ -738,32 +835,76 @@ function Documentos() {
                       ) => {
                         const indice =
                           indiceFolha *
-                            4 +
+                            parcelasPorFolha +
                           indiceNaFolha;
                         const item =
                           parcela.item;
+                        const curso =
+                          aluno.curso ||
+                          item.descricao;
 
                         return `
                           <article class="parcela-carne">
-                            <div>
-                              <h3>Mensalidade ${indice + 1}/${contasCarne.length}</h3>
-                              <p><strong>Aluno:</strong> ${escapar(aluno.nome)}</p>
-                              <p><strong>Responsável:</strong> ${escapar(aluno.responsavelNome || aluno.nome)}</p>
-                              <p><strong>Curso:</strong> ${escapar(aluno.curso || item.descricao)}</p>
-                              <p><strong>Vencimento:</strong> ${escapar(formatarData(item.vencimento))}</p>
-                              <p class="valor">${escapar(moeda(item.valor))}</p>
-                              <p><strong>Status:</strong> ${escapar(item.status)}</p>
-                              <p><strong>Unidade:</strong> ${escapar(item.unidade)}</p>
-                            </div>
-                            <div>
-                              <img class="qr-pix" src="${parcela.qrCode}" alt="QR Code PIX da mensalidade" />
-                              <div class="pix-chave"><strong>PIX:</strong> ${escapar(configuracaoPix.chave)}</div>
-                            </div>
+                            <section class="canhoto">
+                              <div class="campo-carne nome-aluno">
+                                <small>Aluno(a)</small>
+                                <strong>${escapar(aluno.nome)}</strong>
+                              </div>
+                              <div class="duas-colunas">
+                                <div class="campo-carne"><small>Parcela</small><strong>${indice + 1}/${contasCarne.length}</strong></div>
+                                <div class="campo-carne"><small>Data de emissão</small><strong>${escapar(dataEmissao)}</strong></div>
+                              </div>
+                              <div class="duas-colunas">
+                                <div class="campo-carne"><small>Data de vencimento</small><strong>${escapar(formatarData(item.vencimento))}</strong></div>
+                                <div class="campo-carne valor-carne"><small>Valor</small><strong>${escapar(moeda(item.valor))}</strong></div>
+                              </div>
+                              <div class="duas-colunas">
+                                <div class="campo-carne"><small>Juros</small><strong>&nbsp;</strong></div>
+                                <div class="campo-carne"><small>Multa</small><strong>&nbsp;</strong></div>
+                              </div>
+                              <div class="campo-carne"><small>Total pago</small><strong>&nbsp;</strong></div>
+                              <div class="rodape-canhoto">
+                                <img src="${window.location.origin}/logo-cedep.png" alt="CEDEP Cursos" />
+                                <span class="via-cliente">VIA CLIENTE</span>
+                              </div>
+                            </section>
+                            <section class="via-escola">
+                              <div class="dados-principais">
+                                <div class="campo-carne nome-aluno">
+                                  <small>Aluno(a)</small>
+                                  <strong>${escapar(aluno.nome)}</strong>
+                                </div>
+                                <div class="duas-colunas">
+                                  <div class="campo-carne"><small>Responsável financeiro</small><strong>${escapar(aluno.responsavelNome || aluno.nome)}</strong></div>
+                                  <div class="campo-carne"><small>Unidade</small><strong>${escapar(item.unidade)}</strong></div>
+                                </div>
+                                <div class="tres-colunas">
+                                  <div class="campo-carne"><small>Parcela</small><strong>${indice + 1}/${contasCarne.length}</strong></div>
+                                  <div class="campo-carne"><small>Data de emissão</small><strong>${escapar(dataEmissao)}</strong></div>
+                                  <div class="campo-carne"><small>Data de vencimento</small><strong>${escapar(formatarData(item.vencimento))}</strong></div>
+                                </div>
+                                <div class="duas-colunas">
+                                  <div class="campo-carne curso-carne"><small>Curso</small><strong>${escapar(curso)}</strong></div>
+                                  <div class="campo-carne valor-carne"><small>Valor</small><strong>${escapar(moeda(item.valor))}</strong></div>
+                                </div>
+                                <div class="instrucoes">
+                                  <p><strong>Pagamento:</strong> na Secretaria da Escola ou via PIX.</p>
+                                  <p><strong>Beneficiário:</strong> ${escapar(configuracaoPix.beneficiario)}</p>
+                                  <p><strong>Chave PIX:</strong> ${escapar(configuracaoPix.chave)}</p>
+                                  <p>O QR Code já contém o valor desta mensalidade.</p>
+                                </div>
+                              </div>
+                              <div class="pagamento">
+                                <div class="pix-chave"><strong>PIX - escaneie para pagar</strong></div>
+                                <img class="qr-pix" src="${parcela.qrCode}" alt="QR Code PIX da mensalidade" />
+                                <div class="total-pago"><small>Multa / Juros / Total pago</small><strong>&nbsp;</strong></div>
+                              </div>
+                            </section>
                           </article>
                         `;
                       }
                     )
-                    .join("")}
+                    .join('<div class="linha-corte">- - - - - - - - - - LINHA DE CORTE - - - - - - - - - -</div>')}
                 </div>
               </section>
             `
@@ -1026,6 +1167,31 @@ function Documentos() {
               )}
               onChange={
                 setAlunoCarne
+              }
+            />
+            <CampoSelect
+              label="Formato de impressão"
+              value={String(
+                parcelasPorFolha
+              )}
+              opcoes={[
+                {
+                  valor: "2",
+                  rotulo:
+                    "Bloco - 2 parcelas por folha (recomendado)",
+                },
+                {
+                  valor: "4",
+                  rotulo:
+                    "Compacto - 4 parcelas por folha",
+                },
+              ]}
+              onChange={(valor) =>
+                setParcelasPorFolha(
+                  valor === "4"
+                    ? 4
+                    : 2
+                )
               }
             />
             {alunoCarne && (
