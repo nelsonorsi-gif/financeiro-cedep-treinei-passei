@@ -10,6 +10,12 @@ import {
   type ConfiguracoesFinanceiras,
 } from "./Configuracoes";
 import type { UsuarioSessao } from "./Acesso";
+import {
+  carregarContasEstruturadas,
+  excluirContaEstruturada,
+  registrarBaixaEstruturada,
+  salvarContaEstruturada,
+} from "./servicos/contasEstruturadas";
 
 export type Conta = {
   id: string;
@@ -20,7 +26,13 @@ export type Conta = {
   banco: string;
   unidade: string;
   observacao: string;
-  status: "Pendente" | "Pago" | "Recebido";
+  status:
+    | "Pendente"
+    | "Pago"
+    | "Recebido"
+    | "Parcial"
+    | "Renegociado"
+    | "Cancelado";
   tipo: "receber" | "pagar";
   origem?: "manual" | "mensalidade" | "secretaria" | "escola" | "repasse-escola";
   criadoPorId?: string;
@@ -30,7 +42,12 @@ export type Conta = {
   alunoNome?: string;
   criadoEm?: string;
   atualizadoEm?: string;
+  atualizadoPorId?: string;
   dataBaixa?: string;
+  valorPago?: number;
+  juros?: number;
+  multa?: number;
+  desconto?: number;
 };
 
 type Props = {
@@ -99,8 +116,30 @@ const formatarData = (data: string) => {
 const contaConcluida = (conta: Conta) =>
   conta.status === "Pago" || conta.status === "Recebido";
 
+const contaEmAberto = (conta: Conta) =>
+  conta.status === "Pendente" ||
+  conta.status === "Parcial";
+
+const totalConta = (conta: Conta) =>
+  Math.max(
+    0,
+    conta.valor +
+      (conta.juros ?? 0) +
+      (conta.multa ?? 0) -
+      (conta.desconto ?? 0)
+  );
+
+const saldoConta = (conta: Conta) =>
+  Math.max(
+    0,
+    totalConta(conta) -
+      (conta.valorPago ?? 0)
+  );
+
 const contaVencida = (conta: Conta) =>
-  conta.status === "Pendente" && Boolean(conta.vencimento) && conta.vencimento < hojeISO();
+  contaEmAberto(conta) &&
+  Boolean(conta.vencimento) &&
+  conta.vencimento < hojeISO();
 
 const contaMensalidade = (conta: Conta) =>
   conta.origem === "mensalidade" ||
@@ -141,22 +180,70 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
   const [somenteMensalidades, setSomenteMensalidades] = useState(false);
   const [ordenacao, setOrdenacao] = useState<Ordenacao>("vencimento-asc");
   const [pagina, setPagina] = useState(1);
+  const [contaBaixa, setContaBaixa] =
+    useState<Conta | null>(null);
+  const [valorBaixa, setValorBaixa] =
+    useState("");
+  const [jurosBaixa, setJurosBaixa] =
+    useState("0");
+  const [multaBaixa, setMultaBaixa] =
+    useState("0");
+  const [descontoBaixa, setDescontoBaixa] =
+    useState("0");
+  const [dataPagamento, setDataPagamento] =
+    useState(hojeISO());
+  const [
+    formaPagamento,
+    setFormaPagamento,
+  ] = useState("PIX");
+  const [
+    bancoPagamento,
+    setBancoPagamento,
+  ] = useState("");
+  const [
+    observacaoBaixa,
+    setObservacaoBaixa,
+  ] = useState("");
+  const [processando, setProcessando] =
+    useState(false);
 
   useEffect(() => {
-    const carregar = () => {
+    const carregar = async () => {
       try {
         const salvas = localStorage.getItem(CHAVE_CONTAS);
-        setContas(salvas ? JSON.parse(salvas) : []);
+        const locais: Conta[] = salvas
+          ? JSON.parse(salvas)
+          : [];
+        setContas(locais);
+
+        const nuvem =
+          await carregarContasEstruturadas();
+        if (nuvem) {
+          setContas(nuvem);
+          localStorage.setItem(
+            CHAVE_CONTAS,
+            JSON.stringify(nuvem)
+          );
+        }
       } catch (erro) {
         console.error("Erro ao carregar contas:", erro);
       } finally {
         setCarregado(true);
       }
     };
-    carregar();
-    window.addEventListener("financeiro-contas-atualizadas", carregar);
+    void carregar();
+    const atualizar = () => {
+      void carregar();
+    };
+    window.addEventListener(
+      "financeiro-contas-atualizadas",
+      atualizar
+    );
     return () =>
-      window.removeEventListener("financeiro-contas-atualizadas", carregar);
+      window.removeEventListener(
+        "financeiro-contas-atualizadas",
+        atualizar
+      );
   }, []);
 
   useEffect(() => {
@@ -182,7 +269,7 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
     setContaEditando(null);
   };
 
-  const salvarConta = () => {
+  const salvarConta = async () => {
     const valorNumerico = converterNumero(valor);
     if (!descricao.trim()) return alert("Digite uma descrição.");
     if (valorNumerico <= 0) return alert("Digite um valor válido.");
@@ -218,18 +305,48 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
       criadoPorPerfil: existente?.criadoPorPerfil ?? usuarioAtual.perfil,
       criadoEm: existente?.criadoEm ?? agora,
       atualizadoEm: agora,
+      atualizadoPorId:
+        usuarioAtual.id,
       dataBaixa: existente?.dataBaixa,
       alunoId: existente?.alunoId,
       alunoNome: existente?.alunoNome,
+      valorPago:
+        existente?.valorPago ?? 0,
+      juros: existente?.juros ?? 0,
+      multa: existente?.multa ?? 0,
+      desconto:
+        existente?.desconto ?? 0,
     };
 
-    setContas((atuais) =>
-      contaEditando
-        ? atuais.map((item) => (item.id === contaEditando ? novaConta : item))
-        : [...atuais, novaConta]
-    );
-    limparFormulario();
-    alert(contaEditando ? "Conta atualizada com sucesso." : "Conta cadastrada com sucesso.");
+    try {
+      setProcessando(true);
+      await salvarContaEstruturada(
+        novaConta,
+        usuarioAtual.id
+      );
+      setContas((atuais) =>
+        contaEditando
+          ? atuais.map((item) =>
+              item.id === contaEditando
+                ? novaConta
+                : item
+            )
+          : [...atuais, novaConta]
+      );
+      limparFormulario();
+      alert(
+        contaEditando
+          ? "Conta atualizada com sucesso."
+          : "Conta cadastrada com sucesso."
+      );
+    } catch (erro) {
+      console.error(erro);
+      alert(
+        "Não foi possível salvar a conta na nuvem."
+      );
+    } finally {
+      setProcessando(false);
+    }
   };
 
   const editarConta = (conta: Conta) => {
@@ -244,33 +361,165 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const excluirConta = (conta: Conta) => {
+  const excluirConta = async (conta: Conta) => {
     if (!window.confirm(`Deseja excluir "${conta.descricao}"?`)) return;
-    setContas((atuais) => atuais.filter((item) => item.id !== conta.id));
+    try {
+      await excluirContaEstruturada(
+        conta.id
+      );
+      setContas((atuais) =>
+        atuais.filter(
+          (item) => item.id !== conta.id
+        )
+      );
+    } catch (erro) {
+      console.error(erro);
+      alert(
+        "Não foi possível excluir esta conta."
+      );
+    }
   };
 
   const baixarConta = (conta: Conta) => {
-    if (conta.status !== "Pendente") return;
-    const acao = tipo === "receber" ? "receber" : "pagar";
-    if (
-      !window.confirm(
-        `Confirma ${acao} ${moeda(conta.valor)} referente a "${conta.descricao}"?`
+    if (!contaEmAberto(conta)) return;
+    setContaBaixa(conta);
+    setValorBaixa(
+      saldoConta(conta)
+        .toFixed(2)
+        .replace(".", ",")
+    );
+    setJurosBaixa(
+      String(conta.juros ?? 0).replace(
+        ".",
+        ","
       )
+    );
+    setMultaBaixa(
+      String(conta.multa ?? 0).replace(
+        ".",
+        ","
+      )
+    );
+    setDescontoBaixa(
+      String(
+        conta.desconto ?? 0
+      ).replace(".", ",")
+    );
+    setDataPagamento(hojeISO());
+    setBancoPagamento(
+      conta.banco
+    );
+    setFormaPagamento("PIX");
+    setObservacaoBaixa("");
+  };
+
+  const confirmarBaixa = async () => {
+    if (!contaBaixa) return;
+
+    const valorRecebido =
+      converterNumero(valorBaixa);
+    const juros =
+      converterNumero(jurosBaixa);
+    const multa =
+      converterNumero(multaBaixa);
+    const desconto =
+      converterNumero(descontoBaixa);
+    const totalAtualizado = Math.max(
+      0,
+      contaBaixa.valor +
+        juros +
+        multa -
+        desconto
+    );
+    const pagoAntes =
+      contaBaixa.valorPago ?? 0;
+    const saldoAntes = Math.max(
+      0,
+      totalAtualizado - pagoAntes
+    );
+
+    if (
+      valorRecebido <= 0 ||
+      valorRecebido >
+        saldoAntes + 0.01
     ) {
+      alert(
+        `Informe um valor entre R$ 0,01 e ${moeda(
+          saldoAntes
+        )}.`
+      );
       return;
     }
-    const novoStatus = tipo === "receber" ? "Recebido" : "Pago";
+
+    const novoValorPago =
+      pagoAntes + valorRecebido;
+    const quitada =
+      novoValorPago >=
+      totalAtualizado - 0.01;
     const atualizada: Conta = {
-      ...conta,
-      status: novoStatus,
-      dataBaixa: hojeISO(),
-      atualizadoEm: new Date().toISOString(),
+      ...contaBaixa,
+      valorPago: novoValorPago,
+      juros,
+      multa,
+      desconto,
+      status: quitada
+        ? tipo === "receber"
+          ? "Recebido"
+          : "Pago"
+        : "Parcial",
+      dataBaixa: quitada
+        ? dataPagamento
+        : undefined,
+      atualizadoEm:
+        new Date().toISOString(),
+      atualizadoPorId:
+        usuarioAtual.id,
     };
-    setContas((atuais) =>
-      atuais.map((item) => (item.id === conta.id ? atualizada : item))
-    );
-    onBaixar(atualizada);
-    alert(tipo === "receber" ? "Recebimento confirmado." : "Pagamento confirmado.");
+
+    try {
+      setProcessando(true);
+      await registrarBaixaEstruturada({
+        conta: atualizada,
+        usuarioId:
+          usuarioAtual.id,
+        valor: valorRecebido,
+        dataPagamento,
+        bancoPagamento,
+        formaPagamento,
+        observacao:
+          observacaoBaixa,
+      });
+      setContas((atuais) =>
+        atuais.map((item) =>
+          item.id === atualizada.id
+            ? atualizada
+            : item
+        )
+      );
+      onBaixar({
+        ...atualizada,
+        valor: valorRecebido,
+      });
+      setContaBaixa(null);
+      alert(
+        quitada
+          ? "Baixa integral confirmada."
+          : `Baixa parcial registrada. Saldo restante: ${moeda(
+              Math.max(
+                0,
+                totalAtualizado -
+                  novoValorPago
+              )
+            )}.`
+      );
+    } catch (erro) {
+      console.error(erro);
+      alert(
+        "Não foi possível registrar a baixa."
+      );
+    } finally {
+      setProcessando(false);
+    }
   };
 
   const contasPermitidas = useMemo(
@@ -308,14 +557,14 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
         const correspondeSituacao =
           situacao === "Todos" ||
           (situacao === "Pendentes" &&
-            conta.status === "Pendente" &&
+            contaEmAberto(conta) &&
             !contaVencida(conta)) ||
           (situacao === "Vencidos" && contaVencida(conta)) ||
           (situacao === "Vencem hoje" &&
-            conta.status === "Pendente" &&
+            contaEmAberto(conta) &&
             conta.vencimento === hoje) ||
           (situacao === "A vencer" &&
-            conta.status === "Pendente" &&
+            contaEmAberto(conta) &&
             conta.vencimento > hoje) ||
           (situacao === "Concluídos" && contaConcluida(conta));
 
@@ -373,7 +622,10 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
     paginaSegura * ITENS_POR_PAGINA
   );
 
-  const pendentes = contasPermitidas.filter((item) => item.status === "Pendente");
+  const pendentes =
+    contasPermitidas.filter(
+      contaEmAberto
+    );
   const vencidas = pendentes.filter(contaVencida);
   const proximos30 = pendentes.filter(
     (item) => item.vencimento >= hojeISO() && item.vencimento <= somarDiasISO(30)
@@ -381,6 +633,14 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
   const concluidas = contasPermitidas.filter(contaConcluida);
   const soma = (itens: Conta[]) =>
     itens.reduce((total, item) => total + item.valor, 0);
+  const somaSaldos = (
+    itens: Conta[]
+  ) =>
+    itens.reduce(
+      (total, item) =>
+        total + saldoConta(item),
+      0
+    );
 
   const categoriasFormulario =
     tipo === "receber"
@@ -467,9 +727,9 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
       )}
 
       <section style={estilos.cardsResumo}>
-        <CardResumo titulo={tipo === "receber" ? "A receber" : "A pagar"} valor={moeda(soma(pendentes))} detalhe={`${pendentes.length} pendente(s)`} />
-        <CardResumo titulo="Vencido" valor={moeda(soma(vencidas))} detalhe={`${vencidas.length} conta(s)`} destaque="vermelho" />
-        <CardResumo titulo="Próximos 30 dias" valor={moeda(soma(proximos30))} detalhe={`${proximos30.length} vencimento(s)`} destaque="amarelo" />
+        <CardResumo titulo={tipo === "receber" ? "A receber" : "A pagar"} valor={moeda(somaSaldos(pendentes))} detalhe={`${pendentes.length} pendente(s)`} />
+        <CardResumo titulo="Vencido" valor={moeda(somaSaldos(vencidas))} detalhe={`${vencidas.length} conta(s)`} destaque="vermelho" />
+        <CardResumo titulo="Próximos 30 dias" valor={moeda(somaSaldos(proximos30))} detalhe={`${proximos30.length} vencimento(s)`} destaque="amarelo" />
         <CardResumo titulo={tipo === "receber" ? "Recebido" : "Pago"} valor={moeda(soma(concluidas))} detalhe={`${concluidas.length} concluída(s)`} destaque="verde" />
       </section>
 
@@ -485,7 +745,7 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
           <CampoTexto label="Observação" value={observacao} onChange={setObservacao} placeholder="Opcional" />
         </div>
         <div style={estilos.botoes}>
-          <button onClick={salvarConta} style={estilos.botaoPrincipal}>
+          <button onClick={() => void salvarConta()} disabled={processando} style={estilos.botaoPrincipal}>
             {contaEditando ? "Salvar alterações" : "Salvar conta"}
           </button>
           {contaEditando && (
@@ -578,13 +838,34 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
                         <td style={estilos.td}>{conta.categoria}</td>
                         <td style={estilos.td}>{conta.banco}</td>
                         <td style={estilos.td}>{conta.unidade}</td>
-                        <td style={estilos.td}><strong>{moeda(conta.valor)}</strong></td>
+                        <td style={estilos.td}>
+                          <strong>
+                            {moeda(
+                              saldoConta(conta)
+                            )}
+                          </strong>
+                          {(conta.valorPago ?? 0) >
+                            0 && (
+                            <small
+                              style={
+                                estilos.detalhe
+                              }
+                            >
+                              Pago:{" "}
+                              {moeda(
+                                conta.valorPago ??
+                                  0
+                              )}
+                            </small>
+                          )}
+                        </td>
                         <td style={estilos.td}>
                           <span style={{
                             ...estilos.status,
                             ...(statusTela === "Vencido"
                               ? estilos.statusVencido
-                              : statusTela === "Pendente"
+                            : statusTela === "Pendente" ||
+                                statusTela === "Parcial"
                                 ? estilos.statusPendente
                                 : estilos.statusConcluido),
                           }}>
@@ -593,13 +874,19 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
                         </td>
                         <td style={estilos.td}>
                           <div style={estilos.acoesTabela}>
-                            {conta.status === "Pendente" && (
+                            {contaEmAberto(conta) && (
                               <button onClick={() => baixarConta(conta)} style={estilos.botaoBaixar}>
-                                {tipo === "receber" ? "Receber" : "Pagar"}
+                                {conta.status ===
+                                "Parcial"
+                                  ? "Nova baixa"
+                                  : tipo ===
+                                      "receber"
+                                    ? "Receber"
+                                    : "Pagar"}
                               </button>
                             )}
                             <button onClick={() => editarConta(conta)} style={estilos.botaoEditar}>Editar</button>
-                            <button onClick={() => excluirConta(conta)} style={estilos.botaoExcluir}>Excluir</button>
+                            <button onClick={() => void excluirConta(conta)} style={estilos.botaoExcluir}>Excluir</button>
                           </div>
                         </td>
                       </tr>
@@ -620,6 +907,122 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
           </>
         )}
       </section>
+
+      {contaBaixa && (
+        <div
+          style={estilos.modalFundo}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Registrar baixa financeira"
+        >
+          <div style={estilos.modal}>
+            <h2>
+              Registrar{" "}
+              {tipo === "receber"
+                ? "recebimento"
+                : "pagamento"}
+            </h2>
+            <p style={estilos.textoCinza}>
+              {contaBaixa.descricao}
+              <br />
+              Saldo atual:{" "}
+              <strong>
+                {moeda(
+                  saldoConta(contaBaixa)
+                )}
+              </strong>
+            </p>
+            <div style={estilos.formGrid}>
+              <CampoTexto
+                label="Valor desta baixa"
+                value={valorBaixa}
+                onChange={setValorBaixa}
+                placeholder="0,00"
+              />
+              <CampoTexto
+                label="Data"
+                type="date"
+                value={dataPagamento}
+                onChange={setDataPagamento}
+              />
+              <CampoTexto
+                label="Juros totais"
+                value={jurosBaixa}
+                onChange={setJurosBaixa}
+              />
+              <CampoTexto
+                label="Multa total"
+                value={multaBaixa}
+                onChange={setMultaBaixa}
+              />
+              <CampoTexto
+                label="Desconto total"
+                value={descontoBaixa}
+                onChange={setDescontoBaixa}
+              />
+              <CampoSelect
+                label="Banco / Conta"
+                value={bancoPagamento}
+                opcoes={
+                  configuracoes.bancos
+                }
+                onChange={
+                  setBancoPagamento
+                }
+              />
+              <CampoSelect
+                label="Forma de pagamento"
+                value={formaPagamento}
+                opcoes={[
+                  "PIX",
+                  "Dinheiro",
+                  "Cartão",
+                  "Boleto",
+                  "Transferência",
+                  "Outro",
+                ]}
+                onChange={
+                  setFormaPagamento
+                }
+              />
+              <CampoTexto
+                label="Observação da baixa"
+                value={observacaoBaixa}
+                onChange={
+                  setObservacaoBaixa
+                }
+                placeholder="Opcional"
+              />
+            </div>
+            <div style={estilos.botoes}>
+              <button
+                onClick={() =>
+                  void confirmarBaixa()
+                }
+                disabled={processando}
+                style={
+                  estilos.botaoPrincipal
+                }
+              >
+                {processando
+                  ? "Salvando..."
+                  : "Confirmar baixa"}
+              </button>
+              <button
+                onClick={() =>
+                  setContaBaixa(null)
+                }
+                disabled={processando}
+                style={
+                  estilos.botaoSecundario
+                }
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -878,6 +1281,28 @@ const estilos: Record<string, CSSProperties> = {
     marginTop: 20,
     flexWrap: "wrap",
     color: "#475569",
+  },
+  modalFundo: {
+    position: "fixed",
+    inset: 0,
+    background:
+      "rgba(15,23,42,.72)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    zIndex: 9999,
+    overflowY: "auto",
+  },
+  modal: {
+    width: "min(900px, 100%)",
+    maxHeight: "92vh",
+    overflowY: "auto",
+    background: "#fff",
+    borderRadius: 18,
+    padding: 26,
+    boxShadow:
+      "0 24px 80px rgba(0,0,0,.28)",
   },
 };
 

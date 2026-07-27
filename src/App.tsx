@@ -21,6 +21,8 @@ import Secretaria, {
 } from "./Secretaria";
 import Documentos from "./Documentos";
 import Nuvem from "./Nuvem";
+import Academico from "./Academico";
+import GestaoFinanceira from "./GestaoFinanceira";
 import {
   TelaLogin,
   TelaLoginOnline,
@@ -330,7 +332,8 @@ function App() {
               await prepararSincronizacaoInicial(
                 online.id,
                 online.perfil !==
-                  "Consulta"
+                  "Consulta",
+                online.perfil
               );
 
             if (alterou) {
@@ -380,7 +383,8 @@ function App() {
     return iniciarSincronizacaoAutomatica(
       usuarioAtual.id,
       usuarioAtual.perfil !==
-        "Consulta"
+        "Consulta",
+      usuarioAtual.perfil
     );
   }, [usuarioAtual]);
 
@@ -1800,6 +1804,8 @@ function App() {
 
     "Mensalidades",
 
+    "Matrículas e Turmas",
+
     "Secretaria e Caixa",
 
     "Documentos",
@@ -1817,6 +1823,8 @@ function App() {
     "Importar Excel",
 
     "Relatórios",
+
+    "Gestão e Fechamento",
 
     "Configurações",
 
@@ -1843,7 +1851,8 @@ function App() {
           await prepararSincronizacaoInicial(
             usuario.id,
             usuario.perfil !==
-              "Consulta"
+              "Consulta",
+            usuario.perfil
           );
 
         if (alterou) {
@@ -2495,6 +2504,15 @@ function App() {
         )}
 
         {pagina ===
+          "Matrículas e Turmas" && (
+          <Academico
+            usuarioAtual={
+              usuarioAtual
+            }
+          />
+        )}
+
+        {pagina ===
           "Secretaria e Caixa" && (
           <Secretaria
             onRegistrarReceita={
@@ -3112,6 +3130,15 @@ function App() {
           <Relatorios
             lancamentos={
               lancamentos
+            }
+          />
+        )}
+
+        {pagina ===
+          "Gestão e Fechamento" && (
+          <GestaoFinanceira
+            usuarioAtual={
+              usuarioAtual
             }
           />
         )}
