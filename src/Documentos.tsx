@@ -892,7 +892,7 @@ function Documentos() {
                                   <p><strong>Beneficiário:</strong> ${escapar(configuracaoPix.beneficiario)}</p>
                                   <p><strong>Chave PIX:</strong> ${escapar(configuracaoPix.chave)}</p>
                                   <p>O QR Code já contém o valor desta mensalidade.</p>
-                                  <p><strong>Enviar comprovante no WhatsApp do CEDEP: 44 99866-0620</strong></p>
+                                  <p><strong>Enviar comprovante no WhatsApp do CEDEP: 44 99810-2004</strong></p>
                                 </div>
                               </div>
                               <div class="pagamento">
