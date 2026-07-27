@@ -716,16 +716,19 @@ function Documentos() {
     const parcelas =
       aluno.parcelas ||
       plano.parcelas;
-    const valorMensal =
-      aluno.valorMensalidade ||
-      plano.valor;
-    const valorTabela =
+    const valorPadraoParcela =
       aluno.valorTabela ||
       plano.valor;
-    const desconto =
-      aluno.desconto || 0;
-    const valorTotal =
-      valorMensal * parcelas;
+    const descontoPontualidade = 20;
+    const valorComDesconto =
+      Math.max(
+        valorPadraoParcela -
+          descontoPontualidade,
+        0
+      );
+    const valorTotalCurso =
+      valorPadraoParcela *
+      parcelas;
 
     abrirDocumento(
       `Contrato - ${aluno.nome}`,
@@ -741,18 +744,24 @@ function Documentos() {
           contrato, regido pelas condições seguintes e pela legislação aplicável.
         </p>
 
-        <h2>Identificação das partes</h2>
+        <h2>Contratante / Aluno</h2>
         <div class="box grid">
-          <div><strong>Aluno:</strong> ${escapar(aluno.nome)}</div>
+          <div><strong>Nome:</strong> ${escapar(aluno.nome)}</div>
           <div><strong>CPF:</strong> ${escapar(aluno.cpf)}</div>
           <div><strong>Data de nascimento:</strong> ${escapar(formatarData(aluno.nascimento))}</div>
-          <div><strong>Responsável:</strong> ${escapar(aluno.responsavelNome || aluno.nome)}</div>
-          <div><strong>CPF do responsável:</strong> ${escapar(aluno.responsavelCpf || aluno.cpf)}</div>
-          <div><strong>Telefone:</strong> ${escapar(aluno.responsavelTelefone || aluno.telefone)}</div>
+          <div><strong>Telefone:</strong> ${escapar(aluno.telefone)}</div>
           <div><strong>E-mail:</strong> ${escapar(aluno.email)}</div>
           <div><strong>Endereço:</strong> ${escapar(enderecoContrato || "Não informado")}</div>
           <div><strong>Cidade/UF:</strong> ${escapar(cidadeContrato || "Não informada")}</div>
           <div><strong>Unidade:</strong> ${escapar(aluno.unidade)}</div>
+        </div>
+
+        <h2>Responsável financeiro</h2>
+        <div class="box grid">
+          <div><strong>Nome:</strong> ${escapar(aluno.responsavelNome || aluno.nome)}</div>
+          <div><strong>CPF:</strong> ${escapar(aluno.responsavelCpf || aluno.cpf)}</div>
+          <div><strong>Telefone:</strong> ${escapar(aluno.responsavelTelefone || aluno.telefone)}</div>
+          <div><strong>Vínculo:</strong> responsável pelo cumprimento das obrigações financeiras deste contrato</div>
         </div>
 
         <h2>Quadro-resumo do serviço contratado</h2>
@@ -761,13 +770,19 @@ function Documentos() {
           <div><strong>Curso:</strong> ${escapar(aluno.curso || plano.curso)}</div>
           <div><strong>Início:</strong> ${escapar(formatarData(inicioContrato))}</div>
           <div><strong>Término previsto:</strong> ${escapar(formatarData(terminoContrato))}</div>
-          <div><strong>Condição:</strong> ${parcelas} parcela(s) de ${escapar(moeda(valorMensal))}</div>
+          <div><strong>Plano de pagamento:</strong> ${parcelas} parcela(s) de ${escapar(moeda(valorPadraoParcela))}</div>
           <div><strong>Vencimento:</strong> dia ${escapar(diaVencimentoContrato)} de cada mês</div>
-          <div><strong>Valor padrão:</strong> ${escapar(moeda(valorTabela))}</div>
-          <div><strong>Desconto mensal:</strong> ${escapar(moeda(desconto))}</div>
-          <div><strong>Valor total contratado:</strong> ${escapar(moeda(valorTotal))}</div>
+          <div><strong>Valor padrão da parcela:</strong> ${escapar(moeda(valorPadraoParcela))}</div>
+          <div><strong>Desconto especial por pontualidade:</strong> ${escapar(moeda(descontoPontualidade))}</div>
+          <div><strong>Valor da parcela paga até o vencimento:</strong> ${escapar(moeda(valorComDesconto))}</div>
+          <div><strong>Valor total do curso:</strong> ${escapar(moeda(valorTotalCurso))}</div>
           <div><strong>Banco/conta:</strong> ${escapar(aluno.bancoMensalidade || plano.banco)}</div>
         </div>
+        <p class="important">
+          O valor acima corresponde ao <strong>curso completo</strong>. As parcelas representam
+          exclusivamente a forma de pagamento definida no plano escolhido e não mensalidades
+          independentes ou pagamentos por mês de aula.
+        </p>
 
         <h2>Cláusula 1ª - Objeto e natureza do serviço</h2>
         <p>
@@ -787,13 +802,16 @@ function Documentos() {
           geram abatimento, salvo reposição ou compensação expressamente oferecida pela CONTRATADA.
         </p>
 
-        <h2>Cláusula 3ª - Preço, parcelas e desconto</h2>
+        <h2>Cláusula 3ª - Preço total, parcelamento e desconto por pontualidade</h2>
         <p>
-          O CONTRATANTE pagará o valor total indicado no quadro-resumo, dividido nas parcelas
-          ali especificadas. O desconto informado integra a condição comercial individual deste
-          contrato. Quando identificado como desconto de pontualidade, sua manutenção dependerá
-          do pagamento até o vencimento, sem alterar o valor total de referência expressamente
-          informado ao CONTRATANTE.
+          O preço contratado refere-se à prestação do <strong>curso completo</strong>, sendo o
+          parcelamento mera facilidade de pagamento conforme o plano escolhido. As parcelas não
+          caracterizam mensalidades autônomas nem remuneração isolada por cada mês de aula.
+          Sobre o valor padrão de cada parcela será concedido desconto especial de
+          <strong>${escapar(moeda(descontoPontualidade))}</strong> quando o pagamento ocorrer até
+          o respectivo dia de vencimento. Após o vencimento, o desconto deixa de ser aplicável
+          àquela parcela, que retornará ao valor padrão, acrescido somente dos encargos legalmente
+          admitidos.
         </p>
 
         <h2>Cláusula 4ª - Atraso e cobrança</h2>
@@ -808,11 +826,18 @@ function Documentos() {
         <h2>Cláusula 5ª - Cancelamento e desistência</h2>
         <p>
           O cancelamento deverá ser solicitado por escrito pelo aluno maior de idade ou pelo
-          responsável legal. Serão devidos os valores vencidos, os serviços efetivamente prestados
-          até a data de encerramento e materiais individuais já entregues. Não haverá cobrança
-          automática das mensalidades posteriores à efetivação do cancelamento. Eventual custo
-          administrativo deverá ser previamente informado, proporcional e compatível com os
-          prejuízos efetivamente suportados, respeitada a legislação de proteção do consumidor.
+          responsável legal, com protocolo que permita comprovar a data do pedido. Quando o
+          cancelamento for admitido, serão devidos os valores vencidos, os materiais individuais
+          já entregues e multa compensatória equivalente a
+          <strong>duas parcelas pelo valor padrão</strong> indicado no quadro-resumo.
+        </p>
+        <p class="important">
+          O cancelamento somente poderá ser solicitado enquanto restarem pelo menos dois meses
+          completos até a previsão de encerramento do curso. Faltando menos de dois meses para o
+          término, não será admitido o cancelamento, permanecendo devidas as parcelas do plano
+          contratado. Estas condições serão aplicadas com observância das normas de proteção do
+          consumidor e poderão ser adequadas quando a legislação ou as circunstâncias concretas
+          assim exigirem.
         </p>
         <p>
           Quando a contratação ocorrer fora do estabelecimento comercial ou por meio eletrônico,
@@ -1237,13 +1262,14 @@ function Documentos() {
                 }
               />
               <CampoData
-                label="Data de término prevista"
+                label="Previsão de encerramento (mês/ano)"
                 value={
                   terminoContrato
                 }
                 onChange={
                   setTerminoContrato
                 }
+                type="month"
               />
               <CampoTexto
                 label="Dia de vencimento"
@@ -1582,12 +1608,14 @@ function CampoData({
   label,
   value,
   onChange,
+  type = "date",
 }: {
   label: string;
   value: string;
   onChange: (
     valor: string
   ) => void;
+  type?: "date" | "month";
 }) {
   return (
     <label
@@ -1597,7 +1625,7 @@ function CampoData({
     >
       <strong>{label}</strong>
       <input
-        type="date"
+        type={type}
         value={value}
         onChange={(evento) =>
           onChange(
