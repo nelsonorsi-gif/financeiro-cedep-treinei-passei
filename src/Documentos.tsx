@@ -39,8 +39,47 @@ type ConfiguracaoPix = {
   cidade: string;
 };
 
+type AnoContrato = {
+  anoLetivo: string;
+  curso: string;
+  parcelas: string;
+  valorPadrao: string;
+  primeiroVencimento: string;
+};
+
 const CHAVE_CONFIGURACAO_PIX =
   "financeiro-cedep-configuracao-pix";
+const CHAVE_CONFIGURACOES_CONTRATOS =
+  "financeiro-cedep-configuracoes-contratos";
+
+const anoAtual =
+  new Date().getFullYear();
+
+const criarAnoContrato = (
+  indice: number
+): AnoContrato => ({
+  anoLetivo: String(
+    anoAtual + indice
+  ),
+  curso: "",
+  parcelas: "12",
+  valorPadrao: "",
+  primeiroVencimento: "",
+});
+
+const converterMoeda = (
+  valor: string
+) => {
+  const texto = valor
+    .replace("R$", "")
+    .replace(/\s/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const numero = Number(texto);
+  return Number.isFinite(numero)
+    ? numero
+    : 0;
+};
 
 const moeda = (valor: number) =>
   valor.toLocaleString("pt-BR", {
@@ -265,6 +304,22 @@ const abrirDocumento = (
             border: 1px solid #cfd6df;
           }
           th { color: white; background: #101a2d; }
+          .tabela-financeira {
+            table-layout: fixed;
+            font-size: 8.2pt;
+            line-height: 1.25;
+          }
+          .tabela-financeira th,
+          .tabela-financeira td {
+            padding: 5px 4px;
+            overflow-wrap: anywhere;
+            vertical-align: middle;
+          }
+          .important {
+            padding: 12px 14px;
+            border-left: 4px solid #ed232b;
+            background: #fff4f4;
+          }
           .assinaturas {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -531,6 +586,16 @@ function Documentos() {
     useState(
       ""
     );
+  const [
+    duracaoContrato,
+    setDuracaoContrato,
+  ] = useState("1");
+  const [
+    anosContrato,
+    setAnosContrato,
+  ] = useState<AnoContrato[]>([
+    criarAnoContrato(0),
+  ]);
 
   const [alunoCarne, setAlunoCarne] =
     useState("");
@@ -550,6 +615,138 @@ function Documentos() {
     recebimentoSelecionado,
     setRecebimentoSelecionado,
   ] = useState("");
+
+  const carregarConfiguracaoContrato =
+    (alunoId: string) => {
+      setAlunoContrato(alunoId);
+
+      try {
+        const salvas =
+          JSON.parse(
+            localStorage.getItem(
+              CHAVE_CONFIGURACOES_CONTRATOS
+            ) || "{}"
+          ) as Record<
+            string,
+            {
+              planoContrato?: string;
+              inicioContrato?: string;
+              terminoContrato?: string;
+              diaVencimentoContrato?: string;
+              enderecoContrato?: string;
+              cidadeContrato?: string;
+              autorizacaoImagem?: string;
+              clausulas?: string;
+              duracaoContrato?: string;
+              anosContrato?: AnoContrato[];
+            }
+          >;
+        const salva =
+          salvas[alunoId];
+
+        if (!salva) return;
+
+        setPlanoContrato(
+          salva.planoContrato || ""
+        );
+        setInicioContrato(
+          salva.inicioContrato || ""
+        );
+        setTerminoContrato(
+          salva.terminoContrato || ""
+        );
+        setDiaVencimentoContrato(
+          salva.diaVencimentoContrato ||
+            "10"
+        );
+        setEnderecoContrato(
+          salva.enderecoContrato || ""
+        );
+        setCidadeContrato(
+          salva.cidadeContrato ||
+            "Astorga - PR"
+        );
+        setAutorizacaoImagem(
+          salva.autorizacaoImagem ||
+            "Não autorizo"
+        );
+        setClausulas(
+          salva.clausulas || ""
+        );
+        setDuracaoContrato(
+          salva.duracaoContrato || "1"
+        );
+        setAnosContrato(
+          salva.anosContrato?.length
+            ? salva.anosContrato
+            : [criarAnoContrato(0)]
+        );
+      } catch (erro) {
+        console.error(
+          "Erro ao carregar configuração do contrato:",
+          erro
+        );
+      }
+    };
+
+  const salvarConfiguracaoContrato =
+    (
+      mostrarMensagem = true
+    ) => {
+      if (!alunoContrato) {
+        if (mostrarMensagem) {
+          alert(
+            "Selecione um aluno."
+          );
+        }
+        return false;
+      }
+
+      try {
+        const salvas =
+          JSON.parse(
+            localStorage.getItem(
+              CHAVE_CONFIGURACOES_CONTRATOS
+            ) || "{}"
+          ) as Record<
+            string,
+            unknown
+          >;
+        salvas[alunoContrato] = {
+          planoContrato,
+          inicioContrato,
+          terminoContrato,
+          diaVencimentoContrato,
+          enderecoContrato,
+          cidadeContrato,
+          autorizacaoImagem,
+          clausulas,
+          duracaoContrato,
+          anosContrato,
+        };
+        localStorage.setItem(
+          CHAVE_CONFIGURACOES_CONTRATOS,
+          JSON.stringify(salvas)
+        );
+        if (mostrarMensagem) {
+          alert(
+            "Configuração do contrato salva."
+          );
+        }
+        return true;
+      } catch (erro) {
+        console.error(
+          "Erro ao salvar configuração do contrato:",
+          erro
+        );
+        if (mostrarMensagem) {
+          alert(
+            "Não foi possível salvar a configuração."
+          );
+        }
+        return false;
+      }
+    };
 
   useEffect(() => {
     try {
@@ -713,22 +910,76 @@ function Documentos() {
       return;
     }
 
-    const parcelas =
-      aluno.parcelas ||
-      plano.parcelas;
-    const valorPadraoParcela =
-      aluno.valorTabela ||
-      plano.valor;
+    const duracao =
+      Number(duracaoContrato);
+    const anosFinanceiros =
+      anosContrato
+        .slice(0, duracao)
+        .map((ano) => ({
+          ...ano,
+          quantidadeParcelas:
+            Number(ano.parcelas),
+          valorPadraoNumerico:
+            converterMoeda(
+              ano.valorPadrao
+            ),
+        }));
+
+    if (
+      anosFinanceiros.some(
+        (ano) =>
+          !ano.anoLetivo.trim() ||
+          !ano.curso.trim() ||
+          ano.quantidadeParcelas <=
+            0 ||
+          ano.valorPadraoNumerico <=
+            0 ||
+          !ano.primeiroVencimento
+      )
+    ) {
+      alert(
+        "Preencha curso, ano letivo, parcelas, valor padrão e primeiro vencimento de todos os anos do contrato."
+      );
+      return;
+    }
+
     const descontoPontualidade = 20;
-    const valorComDesconto =
-      Math.max(
-        valorPadraoParcela -
-          descontoPontualidade,
+    const valorTotalCurso =
+      anosFinanceiros.reduce(
+        (total, ano) =>
+          total +
+          ano.valorPadraoNumerico *
+            ano.quantidadeParcelas,
         0
       );
-    const valorTotalCurso =
-      valorPadraoParcela *
-      parcelas;
+    const anoFinal =
+      Number(
+        anosFinanceiros.at(-1)
+          ?.anoLetivo
+      ) || anoAtual;
+    const anoBeneficio =
+      anoFinal + 1;
+    const tabelaAnos =
+      anosFinanceiros
+        .map(
+          (ano, indice) => `
+            <tr>
+              <td>${indice + 1}º ano</td>
+              <td>${escapar(ano.anoLetivo)}</td>
+              <td>${escapar(ano.curso)}</td>
+              <td>${ano.quantidadeParcelas}</td>
+              <td>${escapar(moeda(ano.valorPadraoNumerico))}</td>
+              <td>${escapar(moeda(Math.max(ano.valorPadraoNumerico - descontoPontualidade, 0)))}</td>
+              <td>${escapar(formatarData(ano.primeiroVencimento))}</td>
+              <td>${escapar(moeda(ano.valorPadraoNumerico * ano.quantidadeParcelas))}</td>
+            </tr>
+          `
+        )
+        .join("");
+
+    salvarConfiguracaoContrato(
+      false
+    );
 
     abrirDocumento(
       `Contrato - ${aluno.nome}`,
@@ -767,17 +1018,30 @@ function Documentos() {
         <h2>Quadro-resumo do serviço contratado</h2>
         <div class="box grid">
           <div><strong>Plano:</strong> ${escapar(aluno.planoNome || plano.nome)}</div>
-          <div><strong>Curso:</strong> ${escapar(aluno.curso || plano.curso)}</div>
+          <div><strong>Tipo de contrato:</strong> ${duracao} ano(s) letivo(s)</div>
           <div><strong>Início:</strong> ${escapar(formatarData(inicioContrato))}</div>
           <div><strong>Término previsto:</strong> ${escapar(formatarData(terminoContrato))}</div>
-          <div><strong>Plano de pagamento:</strong> ${parcelas} parcela(s) de ${escapar(moeda(valorPadraoParcela))}</div>
           <div><strong>Vencimento:</strong> dia ${escapar(diaVencimentoContrato)} de cada mês</div>
-          <div><strong>Valor padrão da parcela:</strong> ${escapar(moeda(valorPadraoParcela))}</div>
           <div><strong>Desconto especial por pontualidade:</strong> ${escapar(moeda(descontoPontualidade))}</div>
-          <div><strong>Valor da parcela paga até o vencimento:</strong> ${escapar(moeda(valorComDesconto))}</div>
           <div><strong>Valor total do curso:</strong> ${escapar(moeda(valorTotalCurso))}</div>
           <div><strong>Banco/conta:</strong> ${escapar(aluno.bancoMensalidade || plano.banco)}</div>
         </div>
+        <h3>Cursos e condições financeiras por ano letivo</h3>
+        <table class="tabela-financeira">
+          <thead>
+            <tr>
+              <th>Etapa</th>
+              <th>Ano</th>
+              <th>Curso</th>
+              <th>Parcelas</th>
+              <th>Valor padrão</th>
+              <th>Até vencimento</th>
+              <th>1º vencimento</th>
+              <th>Total do ano</th>
+            </tr>
+          </thead>
+          <tbody>${tabelaAnos}</tbody>
+        </table>
         <p class="important">
           O valor acima corresponde ao <strong>curso completo</strong>. As parcelas representam
           exclusivamente a forma de pagamento definida no plano escolhido e não mensalidades
@@ -827,9 +1091,12 @@ function Documentos() {
         <p>
           O cancelamento deverá ser solicitado por escrito pelo aluno maior de idade ou pelo
           responsável legal, com protocolo que permita comprovar a data do pedido. Quando o
-          cancelamento for admitido, serão devidos os valores vencidos, os materiais individuais
-          já entregues e multa compensatória equivalente a
-          <strong>duas parcelas pelo valor padrão</strong> indicado no quadro-resumo.
+          cancelamento for admitido, o CONTRATANTE deverá quitar: (a) débitos anteriores e
+          encargos; (b) <strong>a parcela correspondente ao mês do pedido, caso ainda não esteja
+          paga</strong>; (c) materiais individuais já entregues; e (d) multa compensatória
+          equivalente a <strong>duas parcelas adicionais pelo valor padrão, sem o desconto de
+          pontualidade</strong>, considerando-se o valor vigente no ano letivo em que ocorrer o
+          cancelamento.
         </p>
         <p class="important">
           O cancelamento somente poderá ser solicitado enquanto restarem pelo menos dois meses
@@ -888,6 +1155,34 @@ function Documentos() {
           o acesso aos órgãos de defesa e ao foro legalmente competente, inclusive o de seu
           domicílio quando aplicável.
         </p>
+
+        ${
+          duracao === 3
+            ? `
+              <h2>Anexo especial - Benefício de preparação continuada</h2>
+              <div class="box">
+                <p>
+                  O aluno que concluir os três anos letivos contratados e não obtiver aprovação
+                  no curso desejado em instituição pública ou bolsa integral pelo PROUNI terá
+                  direito a um ano de curso pré-vestibular no CEDEP em ${anoBeneficio}, mediante
+                  pagamento mensal de <strong>R$ 50,00</strong> a título de material.
+                </p>
+                <p>
+                  Para utilizar o benefício, o aluno deverá manter frequência mínima de 90%,
+                  participar de monitorias ou grupos de estudos por pelo menos quatro horas
+                  semanais, realizar os simulados propostos, inscrever-se e comparecer às provas
+                  do PAS ou similares em todos os anos do Ensino Médio, ao ENEM e a pelo menos
+                  outro vestibular até o encerramento do Ensino Médio.
+                </p>
+                <p>
+                  O benefício é pessoal, intransferível, depende da comprovação dos requisitos
+                  acima e não representa promessa de aprovação, mas a concessão do ano adicional
+                  de preparação nas condições aqui definidas.
+                </p>
+              </div>
+            `
+            : ""
+        }
 
         ${
           clausulas.trim()
@@ -1229,7 +1524,7 @@ function Documentos() {
                   })
                 )}
                 onChange={
-                  setAlunoContrato
+                  carregarConfiguracaoContrato
                 }
               />
               <CampoSelect
@@ -1248,9 +1543,97 @@ function Documentos() {
                     rotulo:
                       `${item.nome} — ${item.parcelas}x ${moeda(item.valor)}`,
                   }))}
-                onChange={
-                  setPlanoContrato
+                onChange={(valor) => {
+                  setPlanoContrato(
+                    valor
+                  );
+                  const selecionado =
+                    planos.find(
+                      (item) =>
+                        item.id ===
+                        valor
+                    );
+                  if (selecionado) {
+                    setAnosContrato(
+                      (atuais) =>
+                        atuais.map(
+                          (
+                            ano,
+                            indice
+                          ) => ({
+                            ...ano,
+                            curso:
+                              selecionado.curso,
+                            parcelas:
+                              String(
+                                selecionado.parcelas
+                              ),
+                            valorPadrao:
+                              selecionado.valor
+                                .toFixed(
+                                  2
+                                )
+                                .replace(
+                                  ".",
+                                  ","
+                                ),
+                            anoLetivo:
+                              ano.anoLetivo ||
+                              String(
+                                anoAtual +
+                                  indice
+                              ),
+                          })
+                        )
+                    );
+                  }
+                }}
+              />
+              <CampoSelect
+                label="Duração do contrato"
+                value={
+                  duracaoContrato
                 }
+                opcoes={[
+                  {
+                    valor: "1",
+                    rotulo:
+                      "1 ano",
+                  },
+                  {
+                    valor: "2",
+                    rotulo:
+                      "2 anos",
+                  },
+                  {
+                    valor: "3",
+                    rotulo:
+                      "3 anos + benefício de cursinho",
+                  },
+                ]}
+                onChange={(valor) => {
+                  const quantidade =
+                    Number(valor);
+                  setDuracaoContrato(
+                    valor
+                  );
+                  setAnosContrato(
+                    (atuais) =>
+                      Array.from(
+                        {
+                          length:
+                            quantidade,
+                        },
+                        (_, indice) =>
+                          atuais[
+                            indice
+                          ] ??
+                          criarAnoContrato(
+                            indice
+                          )
+                      )
+                  );
+                }}
               />
               <CampoData
                 label="Data de início"
@@ -1325,6 +1708,202 @@ function Documentos() {
                 }
               />
             </div>
+            <h3>
+              Cursos e valores por ano
+            </h3>
+            <p style={estilos.textoCinza}>
+              Informe o valor padrão,
+              sem descontar os R$ 20,00
+              concedidos para pagamento
+              até o vencimento.
+            </p>
+            {anosContrato
+              .slice(
+                0,
+                Number(
+                  duracaoContrato
+                )
+              )
+              .map(
+                (ano, indice) => (
+                  <div
+                    key={indice}
+                    style={
+                      estilos.blocoAno
+                    }
+                  >
+                    <strong>
+                      {indice + 1}º ano
+                      do contrato
+                    </strong>
+                    <div
+                      style={
+                        estilos.formGrid
+                      }
+                    >
+                      <CampoTexto
+                        label="Ano letivo"
+                        value={
+                          ano.anoLetivo
+                        }
+                        placeholder="Ex.: 2026"
+                        onChange={(
+                          valor
+                        ) =>
+                          setAnosContrato(
+                            (atuais) =>
+                              atuais.map(
+                                (
+                                  item,
+                                  posicao
+                                ) =>
+                                  posicao ===
+                                  indice
+                                    ? {
+                                        ...item,
+                                        anoLetivo:
+                                          valor,
+                                      }
+                                    : item
+                              )
+                          )
+                        }
+                      />
+                      <CampoTexto
+                        label="Curso deste ano"
+                        value={
+                          ano.curso
+                        }
+                        placeholder="Ex.: PAS-UEM 1º ano com específicas"
+                        onChange={(
+                          valor
+                        ) =>
+                          setAnosContrato(
+                            (atuais) =>
+                              atuais.map(
+                                (
+                                  item,
+                                  posicao
+                                ) =>
+                                  posicao ===
+                                  indice
+                                    ? {
+                                        ...item,
+                                        curso:
+                                          valor,
+                                      }
+                                    : item
+                              )
+                          )
+                        }
+                      />
+                      <CampoTexto
+                        label="Quantidade de parcelas"
+                        value={
+                          ano.parcelas
+                        }
+                        placeholder="Ex.: 12"
+                        onChange={(
+                          valor
+                        ) =>
+                          setAnosContrato(
+                            (atuais) =>
+                              atuais.map(
+                                (
+                                  item,
+                                  posicao
+                                ) =>
+                                  posicao ===
+                                  indice
+                                    ? {
+                                        ...item,
+                                        parcelas:
+                                          valor,
+                                      }
+                                    : item
+                              )
+                          )
+                        }
+                      />
+                      <CampoTexto
+                        label="Valor padrão da parcela"
+                        value={
+                          ano.valorPadrao
+                        }
+                        placeholder="Ex.: 370,00"
+                        onChange={(
+                          valor
+                        ) =>
+                          setAnosContrato(
+                            (atuais) =>
+                              atuais.map(
+                                (
+                                  item,
+                                  posicao
+                                ) =>
+                                  posicao ===
+                                  indice
+                                    ? {
+                                        ...item,
+                                        valorPadrao:
+                                          valor,
+                                      }
+                                    : item
+                              )
+                          )
+                        }
+                      />
+                      <CampoData
+                        label="Primeiro vencimento"
+                        value={
+                          ano.primeiroVencimento
+                        }
+                        onChange={(
+                          valor
+                        ) =>
+                          setAnosContrato(
+                            (atuais) =>
+                              atuais.map(
+                                (
+                                  item,
+                                  posicao
+                                ) =>
+                                  posicao ===
+                                  indice
+                                    ? {
+                                        ...item,
+                                        primeiroVencimento:
+                                          valor,
+                                      }
+                                    : item
+                              )
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                )
+              )}
+            {duracaoContrato ===
+              "3" && (
+              <div
+                style={
+                  estilos.avisoBeneficio
+                }
+              >
+                <strong>
+                  Benefício incluído:
+                </strong>{" "}
+                o contrato de três
+                anos incluirá
+                automaticamente o anexo
+                de preparação
+                continuada, com um ano
+                de cursinho nas
+                condições e requisitos
+                descritos no contrato.
+              </div>
+            )}
             <label
               style={
                 estilos.campoGrupo
@@ -1347,13 +1926,26 @@ function Documentos() {
                 }
               />
             </label>
-            <Botao
-              onClick={
-                gerarContrato
+            <div
+              style={
+                estilos.botoesContrato
               }
             >
-              Gerar contrato
-            </Botao>
+              <Botao
+                onClick={() =>
+                  salvarConfiguracaoContrato()
+                }
+              >
+                Salvar configuração
+              </Botao>
+              <Botao
+                onClick={
+                  gerarContrato
+                }
+              >
+                Gerar contrato
+              </Botao>
+            </div>
           </>
         )}
 
@@ -1667,6 +2259,30 @@ const estilos: Record<
   textoCinza: {
     color: "#657084",
     lineHeight: 1.6,
+  },
+  blocoAno: {
+    marginTop: 16,
+    padding: 20,
+    border:
+      "1px solid #d9dfe8",
+    borderRadius: 14,
+    background: "#f8fafc",
+  },
+  botoesContrato: {
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+    marginTop: 18,
+  },
+  avisoBeneficio: {
+    marginTop: 16,
+    padding: "14px 16px",
+    borderLeft:
+      "4px solid #15803d",
+    borderRadius: 8,
+    background: "#ecfdf5",
+    color: "#14532d",
+    lineHeight: 1.5,
   },
   abas: {
     display: "flex",
