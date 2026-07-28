@@ -19,6 +19,7 @@ const CHAVES_COMPARTILHADAS = [
   "financeiro-cedep-mensalidades",
   "financeiro-cedep-secretaria",
   "financeiro-cedep-configuracao-pix",
+  "financeiro-cedep-configuracoes-contratos",
 ] as const;
 
 type RegistroNuvem = {
