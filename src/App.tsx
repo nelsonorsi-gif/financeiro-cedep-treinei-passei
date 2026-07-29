@@ -517,6 +517,11 @@ function App() {
   ] = useState("Todas");
 
   const [
+    valoresDashboardOcultos,
+    setValoresDashboardOcultos,
+  ] = useState(false);
+
+  const [
     bancoSelecionado,
     setBancoSelecionado,
   ] =
@@ -2264,46 +2269,90 @@ function App() {
                 </div>
               </div>
 
-              <label
+              <div
                 style={
-                  estilos.campoPeriodo
+                  estilos.controlesDashboard
                 }
               >
-                <strong>
-                  Competência
-                </strong>
-
-                <select
-                  value={
-                    competenciaDashboard
+                <label
+                  style={
+                    estilos.campoPeriodo
                   }
-                  onChange={(evento) =>
-                    setCompetenciaDashboard(
-                      evento.target.value
-                    )
-                  }
-                  style={estilos.input}
                 >
-                  <option value="Todas">
-                    Todos os períodos
-                  </option>
+                  <strong>
+                    Competência
+                  </strong>
 
-                  {competenciasDashboard.map(
-                    (competencia) => (
-                      <option
-                        key={
-                          competencia
-                        }
-                        value={
-                          competencia
-                        }
-                      >
-                        {competencia}
-                      </option>
+                  <select
+                    value={
+                      competenciaDashboard
+                    }
+                    onChange={(evento) =>
+                      setCompetenciaDashboard(
+                        evento.target.value
+                      )
+                    }
+                    style={estilos.input}
+                  >
+                    <option value="Todas">
+                      Todos os períodos
+                    </option>
+
+                    {competenciasDashboard.map(
+                      (competencia) => (
+                        <option
+                          key={
+                            competencia
+                          }
+                          value={
+                            competencia
+                          }
+                        >
+                          {competencia}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setValoresDashboardOcultos(
+                      (ocultos) =>
+                        !ocultos
                     )
-                  )}
-                </select>
-              </label>
+                  }
+                  aria-label={
+                    valoresDashboardOcultos
+                      ? "Mostrar valores do Dashboard"
+                      : "Ocultar valores do Dashboard"
+                  }
+                  title={
+                    valoresDashboardOcultos
+                      ? "Mostrar valores"
+                      : "Ocultar valores"
+                  }
+                  style={
+                    estilos.botaoPrivacidade
+                  }
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontSize: 20,
+                    }}
+                  >
+                    {valoresDashboardOcultos
+                      ? "◉"
+                      : "👁"}
+                  </span>
+
+                  {valoresDashboardOcultos
+                    ? "Mostrar valores"
+                    : "Ocultar valores"}
+                </button>
+              </div>
             </section>
 
             <section
@@ -2311,23 +2360,35 @@ function App() {
             >
               <Card
                 titulo="Saldo do período"
-                valor={moeda(
-                  saldoDashboard
-                )}
+                valor={
+                  valoresDashboardOcultos
+                    ? "••••••"
+                    : moeda(
+                        saldoDashboard
+                      )
+                }
               />
 
               <Card
                 titulo="Entradas"
-                valor={moeda(
-                  entradasDashboard
-                )}
+                valor={
+                  valoresDashboardOcultos
+                    ? "••••••"
+                    : moeda(
+                        entradasDashboard
+                      )
+                }
               />
 
               <Card
                 titulo="Saídas"
-                valor={moeda(
-                  saidasDashboard
-                )}
+                valor={
+                  valoresDashboardOcultos
+                    ? "••••••"
+                    : moeda(
+                        saidasDashboard
+                      )
+                }
               />
 
               <Card
@@ -2339,16 +2400,24 @@ function App() {
 
               <Card
                 titulo="Despesas pessoais previstas"
-                valor={moeda(
-                  despesasPessoaisDashboard
-                )}
+                valor={
+                  valoresDashboardOcultos
+                    ? "••••••"
+                    : moeda(
+                        despesasPessoaisDashboard
+                      )
+                }
               />
 
               <Card
                 titulo="Saldo real após pessoais"
-                valor={moeda(
-                  saldoRealDashboard
-                )}
+                valor={
+                  valoresDashboardOcultos
+                    ? "••••••"
+                    : moeda(
+                        saldoRealDashboard
+                      )
+                }
               />
             </section>
 
@@ -2387,23 +2456,35 @@ function App() {
 
                 <Resumo
                   nome="Entradas"
-                  valor={moeda(
-                    entradasDashboard
-                  )}
+                  valor={
+                    valoresDashboardOcultos
+                      ? "••••••"
+                      : moeda(
+                          entradasDashboard
+                        )
+                  }
                 />
 
                 <Resumo
                   nome="Saídas"
-                  valor={moeda(
-                    saidasDashboard
-                  )}
+                  valor={
+                    valoresDashboardOcultos
+                      ? "••••••"
+                      : moeda(
+                          saidasDashboard
+                        )
+                  }
                 />
 
                 <Resumo
                   nome="Resultado"
-                  valor={moeda(
-                    saldoDashboard
-                  )}
+                  valor={
+                    valoresDashboardOcultos
+                      ? "••••••"
+                      : moeda(
+                          saldoDashboard
+                        )
+                  }
                 />
               </div>
             </section>
@@ -2454,6 +2535,10 @@ function App() {
 
                   excluirLancamento={
                     excluirLancamento
+                  }
+
+                  ocultarValores={
+                    valoresDashboardOcultos
                   }
                 />
               )}
@@ -4152,6 +4237,8 @@ function Tabela({
   excluirLancamento,
 
   paginar = false,
+
+  ocultarValores = false,
 }: {
   lancamentos:
     Lancamento[];
@@ -4167,6 +4254,8 @@ function Tabela({
   ) => void;
 
   paginar?: boolean;
+
+  ocultarValores?: boolean;
 }) {
   const [paginaTabela, setPaginaTabela] =
     useState(1);
@@ -4406,9 +4495,11 @@ function Tabela({
                 >
                   {item.entrada >
                   0
-                    ? moedaTabela(
-                        item.entrada
-                      )
+                    ? ocultarValores
+                      ? "••••••"
+                      : moedaTabela(
+                          item.entrada
+                        )
                     : ""}
                 </td>
 
@@ -4418,9 +4509,11 @@ function Tabela({
                   }
                 >
                   {item.saida > 0
-                    ? moedaTabela(
-                        item.saida
-                      )
+                    ? ocultarValores
+                      ? "••••••"
+                      : moedaTabela(
+                          item.saida
+                        )
                     : ""}
                 </td>
 
@@ -4738,6 +4831,44 @@ const estilos: Record<
     gap: 7,
 
     minWidth: 220,
+  },
+
+  controlesDashboard: {
+    display: "flex",
+
+    alignItems: "flex-end",
+
+    gap: 12,
+
+    flexWrap: "wrap",
+  },
+
+  botaoPrivacidade: {
+    minHeight: 45,
+
+    display: "inline-flex",
+
+    alignItems: "center",
+
+    justifyContent:
+      "center",
+
+    gap: 8,
+
+    padding: "11px 15px",
+
+    border:
+      "1px solid #cbd5e1",
+
+    borderRadius: 10,
+
+    background: "#101a2d",
+
+    color: "white",
+
+    cursor: "pointer",
+
+    fontWeight: 700,
   },
 
   cards: {
