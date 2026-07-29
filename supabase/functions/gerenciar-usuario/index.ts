@@ -356,11 +356,20 @@ Deno.serve(async (requisicao) => {
     const mensagem =
       erro instanceof Error
         ? erro.message
-        : "Erro inesperado.";
+        : typeof erro === "object" &&
+            erro !== null &&
+            "message" in erro &&
+            typeof erro.message ===
+              "string"
+          ? erro.message
+          : typeof erro === "string"
+            ? erro
+            : "Erro inesperado.";
 
     console.error(
       "Falha ao gerenciar usuário:",
-      mensagem
+      mensagem,
+      JSON.stringify(erro)
     );
 
     return responder(
