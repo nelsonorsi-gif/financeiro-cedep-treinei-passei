@@ -696,6 +696,8 @@ export function Usuarios({
     );
   const [editando, setEditando] =
     useState<string | null>(null);
+  const [processando, setProcessando] =
+    useState(false);
 
   useEffect(() => {
     setUsuarios(
@@ -783,10 +785,68 @@ export function Usuarios({
           item.id === editando
       );
 
+    setProcessando(true);
+
+    let idOnline = editando;
+
+    if (
+      supabaseConfigurado &&
+      supabase
+    ) {
+      const { data, error } =
+        await supabase.functions.invoke(
+          "gerenciar-usuario",
+          {
+            body: {
+              acao: "salvar",
+              id:
+                editando?.startsWith(
+                  "usuario-"
+                )
+                  ? null
+                  : editando,
+              nome: nome.trim(),
+              email: login
+                .trim()
+                .toLowerCase(),
+              senha:
+                senha.length >= 6
+                  ? senha
+                  : null,
+              perfil,
+              permissoes:
+                perfil ===
+                "Administrador"
+                  ? [
+                      ...MODULOS_ERP,
+                    ]
+                  : permissoes,
+              ativo:
+                anterior?.ativo ??
+                true,
+            },
+          }
+        );
+
+      if (error) {
+        setProcessando(false);
+        alert(
+          `Não foi possível criar o acesso online: ${error.message}`
+        );
+        return;
+      }
+
+      idOnline =
+        typeof data?.id ===
+        "string"
+          ? data.id
+          : editando;
+    }
+
     const registro: UsuarioSalvo =
       {
         id:
-          editando ??
+          idOnline ??
           `usuario-${Date.now()}`,
         nome: nome.trim(),
         login:
@@ -825,7 +885,12 @@ export function Usuarios({
     setUsuarios(novos);
     salvarUsuarios(novos);
     limpar();
-    alert("Usuário salvo.");
+    setProcessando(false);
+    alert(
+      supabaseConfigurado
+        ? "Usuário e acesso online salvos."
+        : "Usuário salvo neste computador."
+    );
   };
 
   const editar = (
@@ -845,7 +910,7 @@ export function Usuarios({
     });
   };
 
-  const alternar = (
+  const alternar = async (
     id: string
   ) => {
     if (
@@ -857,12 +922,54 @@ export function Usuarios({
       return;
     }
 
+    const usuario =
+      usuarios.find(
+        (item) =>
+          item.id === id
+      );
+
+    if (!usuario) {
+      return;
+    }
+
+    const novoAtivo =
+      !usuario.ativo;
+
+    if (
+      supabaseConfigurado &&
+      supabase &&
+      !id.startsWith(
+        "usuario-"
+      )
+    ) {
+      setProcessando(true);
+      const { error } =
+        await supabase.functions.invoke(
+          "gerenciar-usuario",
+          {
+            body: {
+              acao: "alterar-status",
+              id,
+              ativo: novoAtivo,
+            },
+          }
+        );
+      setProcessando(false);
+
+      if (error) {
+        alert(
+          `Não foi possível alterar o acesso online: ${error.message}`
+        );
+        return;
+      }
+    }
+
     const novos =
       usuarios.map((item) =>
         item.id === id
           ? {
               ...item,
-              ativo: !item.ativo,
+              ativo: novoAtivo,
             }
           : item
       );
@@ -1022,11 +1129,14 @@ export function Usuarios({
         >
           <button
             onClick={salvar}
+            disabled={processando}
             style={
               estilos.botaoPrincipal
             }
           >
-            Salvar usuário
+            {processando
+              ? "Salvando..."
+              : "Salvar usuário"}
           </button>
           {editando && (
             <button

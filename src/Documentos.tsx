@@ -267,6 +267,13 @@ const abrirDocumento = (
   titulo: string,
   conteudo: string
 ) => {
+  const classeDocumento =
+    titulo.startsWith(
+      "Contrato -"
+    )
+      ? "documento-contrato"
+      : "";
+
   const janela = window.open(
     "",
     "_blank",
@@ -542,12 +549,72 @@ const abrirDocumento = (
             font-size: 15pt;
             font-weight: bold;
           }
+          body.documento-contrato {
+            font-size: 9.4pt;
+            line-height: 1.32;
+          }
+          body.documento-contrato header {
+            gap: 16px;
+            padding-bottom: 9px;
+            margin-bottom: 12px;
+          }
+          body.documento-contrato header img {
+            width: 125px;
+          }
+          body.documento-contrato h1 {
+            font-size: 17pt;
+          }
+          body.documento-contrato h2 {
+            margin: 12px 0 5px;
+            font-size: 11.5pt;
+            line-height: 1.2;
+          }
+          body.documento-contrato h3 {
+            margin: 10px 0 4px;
+            font-size: 10.5pt;
+            line-height: 1.2;
+          }
+          body.documento-contrato p {
+            margin: 5px 0;
+            text-align: justify;
+          }
+          body.documento-contrato .box {
+            padding: 8px 10px;
+            margin: 6px 0;
+          }
+          body.documento-contrato .box p {
+            margin: 4px 0;
+          }
+          body.documento-contrato .grid {
+            gap: 5px 14px;
+          }
+          body.documento-contrato table {
+            margin-top: 7px;
+          }
+          body.documento-contrato .tabela-financeira {
+            font-size: 7.5pt;
+            line-height: 1.15;
+          }
+          body.documento-contrato .tabela-financeira th,
+          body.documento-contrato .tabela-financeira td {
+            padding: 3px;
+          }
+          body.documento-contrato .important {
+            padding: 7px 9px;
+            margin: 7px 0;
+            border-left-width: 3px;
+          }
+          body.documento-contrato .assinaturas {
+            gap: 34px;
+            margin-top: 44px;
+            font-size: 8.5pt;
+          }
           @media print {
             .no-print { display: none; }
           }
         </style>
       </head>
-      <body>
+      <body class="${classeDocumento}">
         <button class="no-print" onclick="window.print()" style="margin-bottom:18px;padding:10px 16px">
           Imprimir / Salvar em PDF
         </button>
