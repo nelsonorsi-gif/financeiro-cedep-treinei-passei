@@ -829,9 +829,33 @@ export function Usuarios({
         );
 
       if (error) {
+        let detalhe =
+          error.message;
+        const contexto =
+          "context" in error
+            ? error.context
+            : null;
+
+        if (
+          contexto instanceof
+          Response
+        ) {
+          try {
+            const resposta =
+              await contexto.json();
+            detalhe =
+              typeof resposta?.erro ===
+              "string"
+                ? resposta.erro
+                : detalhe;
+          } catch {
+            // Mantém a mensagem padrão quando não houver JSON.
+          }
+        }
+
         setProcessando(false);
         alert(
-          `Não foi possível criar o acesso online: ${error.message}`
+          `Não foi possível criar o acesso online: ${detalhe}`
         );
         return;
       }

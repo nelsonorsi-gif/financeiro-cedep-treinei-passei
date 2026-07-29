@@ -302,12 +302,19 @@ Deno.serve(async (requisicao) => {
       id,
     });
   } catch (erro) {
+    const mensagem =
+      erro instanceof Error
+        ? erro.message
+        : "Erro inesperado.";
+
+    console.error(
+      "Falha ao gerenciar usuário:",
+      mensagem
+    );
+
     return responder(
       {
-        erro:
-          erro instanceof Error
-            ? erro.message
-            : "Erro inesperado.",
+        erro: mensagem,
       },
       400
     );
