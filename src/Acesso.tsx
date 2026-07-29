@@ -145,6 +145,77 @@ const salvarUsuarios = (
     JSON.stringify(usuarios)
   );
 
+const chamarGerenciamentoUsuario =
+  async (
+    corpo: Record<
+      string,
+      unknown
+    >
+  ) => {
+    if (
+      !supabase ||
+      !supabaseConfigurado
+    ) {
+      throw new Error(
+        "O acesso online não está configurado."
+      );
+    }
+
+    const {
+      data: {
+        session,
+      },
+    } =
+      await supabase.auth
+        .getSession();
+
+    if (!session) {
+      throw new Error(
+        "Sua sessão expirou. Entre novamente como administrador."
+      );
+    }
+
+    const url =
+      import.meta.env
+        .VITE_SUPABASE_URL;
+    const chave =
+      import.meta.env
+        .VITE_SUPABASE_PUBLISHABLE_KEY;
+    const resposta = await fetch(
+      `${url}/functions/v1/gerenciar-usuario`,
+      {
+        method: "POST",
+        headers: {
+          Authorization:
+            `Bearer ${session.access_token}`,
+          apikey: chave,
+          "Content-Type":
+            "application/json",
+        },
+        body:
+          JSON.stringify(corpo),
+      }
+    );
+    const dados =
+      await resposta
+        .json()
+        .catch(() => ({}));
+
+    if (!resposta.ok) {
+      throw new Error(
+        typeof dados?.erro ===
+          "string"
+          ? dados.erro
+          : "O Supabase recusou a operação."
+      );
+    }
+
+    return dados as {
+      id?: string;
+      sucesso?: boolean;
+    };
+  };
+
 export const carregarSessao =
   (): UsuarioSessao | null => {
     try {
@@ -793,31 +864,10 @@ export function Usuarios({
       supabaseConfigurado &&
       supabase
     ) {
-      const {
-        data: {
-          session,
-        },
-      } =
-        await supabase.auth
-          .getSession();
-
-      if (!session) {
-        setProcessando(false);
-        alert(
-          "Sua sessão expirou. Entre novamente como administrador."
-        );
-        return;
-      }
-
-      const { data, error } =
-        await supabase.functions.invoke(
-          "gerenciar-usuario",
-          {
-            headers: {
-              Authorization:
-                `Bearer ${session.access_token}`,
-            },
-            body: {
+      try {
+        const data =
+          await chamarGerenciamentoUsuario(
+            {
               acao: "salvar",
               id:
                 editando?.startsWith(
@@ -844,47 +894,25 @@ export function Usuarios({
               ativo:
                 anterior?.ativo ??
                 true,
-            },
-          }
-        );
+            }
+          );
 
-      if (error) {
-        let detalhe =
-          error.message;
-        const contexto =
-          "context" in error
-            ? error.context
-            : null;
-
-        if (
-          contexto instanceof
-          Response
-        ) {
-          try {
-            const resposta =
-              await contexto.json();
-            detalhe =
-              typeof resposta?.erro ===
-              "string"
-                ? resposta.erro
-                : detalhe;
-          } catch {
-            // Mantém a mensagem padrão quando não houver JSON.
-          }
-        }
-
+        idOnline =
+          typeof data?.id ===
+          "string"
+            ? data.id
+            : editando;
+      } catch (erro) {
         setProcessando(false);
         alert(
-          `Não foi possível criar o acesso online: ${detalhe}`
+          `Não foi possível criar o acesso online: ${
+            erro instanceof Error
+              ? erro.message
+              : "Erro inesperado."
+          }`
         );
         return;
       }
-
-      idOnline =
-        typeof data?.id ===
-        "string"
-          ? data.id
-          : editando;
     }
 
     const registro: UsuarioSalvo =
@@ -988,45 +1016,27 @@ export function Usuarios({
     ) {
       setProcessando(true);
 
-      const {
-        data: {
-          session,
-        },
-      } =
-        await supabase.auth
-          .getSession();
-
-      if (!session) {
-        setProcessando(false);
-        alert(
-          "Sua sessão expirou. Entre novamente como administrador."
-        );
-        return;
-      }
-
-      const { error } =
-        await supabase.functions.invoke(
-          "gerenciar-usuario",
+      try {
+        await chamarGerenciamentoUsuario(
           {
-            headers: {
-              Authorization:
-                `Bearer ${session.access_token}`,
-            },
-            body: {
               acao: "alterar-status",
               id,
               ativo: novoAtivo,
-            },
           }
         );
-      setProcessando(false);
-
-      if (error) {
+      } catch (erro) {
+        setProcessando(false);
         alert(
-          `Não foi possível alterar o acesso online: ${error.message}`
+          `Não foi possível alterar o acesso online: ${
+            erro instanceof Error
+              ? erro.message
+              : "Erro inesperado."
+          }`
         );
         return;
       }
+
+      setProcessando(false);
     }
 
     const novos =
