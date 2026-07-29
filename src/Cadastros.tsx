@@ -16,6 +16,8 @@ import {
   type Plano,
 } from "./CatalogoCursos";
 import Escolas from "./Escolas";
+import AlunoPerfil from "./AlunoPerfil";
+import type { UsuarioSessao } from "./Acesso";
 
 type Situacao = "Ativo" | "Inativo";
 
@@ -226,7 +228,11 @@ const parceiroVazio = (): Omit<
   situacao: "Ativo",
 });
 
-function Cadastros() {
+function Cadastros({
+  usuarioAtual,
+}: {
+  usuarioAtual: UsuarioSessao;
+}) {
   const exibirCamposFinanceirosLegados =
     useMemo(() => false, []);
   const [aba, setAba] =
@@ -237,6 +243,8 @@ function Cadastros() {
     >(
       "Alunos"
     );
+  const [alunoPerfil, setAlunoPerfil] =
+    useState<Aluno | null>(null);
 
   const [dados, setDados] =
     useState<DadosCadastros>({
@@ -829,6 +837,15 @@ function Cadastros() {
 
       {aba === "Alunos" ? (
         <>
+          {alunoPerfil && (
+            <AlunoPerfil
+              aluno={alunoPerfil}
+              usuarioAtual={usuarioAtual}
+              fechar={() =>
+                setAlunoPerfil(null)
+              }
+            />
+          )}
           <section
             style={
               estilos.caixa
@@ -1349,6 +1366,13 @@ function Cadastros() {
                         item
                       )
                     }
+                    perfil={() => {
+                      setAlunoPerfil(item);
+                      window.scrollTo({
+                        top: 0,
+                        behavior: "smooth",
+                      });
+                    }}
                     alternar={() =>
                       alternarSituacao(
                         item.id
@@ -1784,11 +1808,13 @@ function Lista({
 
 function AcoesRegistro({
   situacao,
+  perfil,
   editar,
   alternar,
   excluir,
 }: {
   situacao: Situacao;
+  perfil?: () => void;
   editar: () => void;
   alternar: () => void;
   excluir: () => void;
@@ -1814,6 +1840,14 @@ function AcoesRegistro({
       >
         {situacao}
       </span>
+      {perfil && (
+        <button
+          onClick={perfil}
+          style={estilos.botaoPerfil}
+        >
+          Ver perfil
+        </button>
+      )}
       <button
         onClick={editar}
         style={
@@ -1961,6 +1995,14 @@ const estilos: Record<
   },
   botaoEditar: {
     background: "#2563eb",
+    color: "white",
+    border: "none",
+    borderRadius: 8,
+    padding: "9px 12px",
+    cursor: "pointer",
+  },
+  botaoPerfil: {
+    background: "#17233a",
     color: "white",
     border: "none",
     borderRadius: 8,

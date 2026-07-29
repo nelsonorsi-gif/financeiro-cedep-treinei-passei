@@ -8,7 +8,9 @@ import type {
   UsuarioSessao,
 } from "./Acesso";
 import {
+  CHAVE_MENSALIDADES,
   carregarCatalogoCursos,
+  type Curso,
 } from "./CatalogoCursos";
 
 export type Turma = {
@@ -149,11 +151,18 @@ export default function Academico({
     useState<Aluno[]>(
       lerAlunos
     );
-  const catalogo =
-    useMemo(
-      carregarCatalogoCursos,
-      []
+  const [catalogo, setCatalogo] =
+    useState(
+      carregarCatalogoCursos
     );
+  const [cursoNome, setCursoNome] =
+    useState("");
+  const [cursoDescricao, setCursoDescricao] =
+    useState("");
+  const [cursoEditando, setCursoEditando] =
+    useState<string | null>(null);
+  const [turmaEditando, setTurmaEditando] =
+    useState<string | null>(null);
   const [nome, setNome] =
     useState("");
   const [cursoId, setCursoId] =
@@ -195,6 +204,78 @@ export default function Academico({
     );
   }, [turmas, matriculas]);
 
+  const salvarCursos = (
+    cursos: Curso[]
+  ) => {
+    const atualizado = {
+      ...catalogo,
+      cursos,
+    };
+    localStorage.setItem(
+      CHAVE_MENSALIDADES,
+      JSON.stringify(atualizado)
+    );
+    setCatalogo(atualizado);
+    window.dispatchEvent(
+      new CustomEvent(
+        "financeiro-cursos-atualizados"
+      )
+    );
+  };
+
+  const salvarCurso = () => {
+    if (!cursoNome.trim()) {
+      alert("Informe o nome do curso.");
+      return;
+    }
+    const registro: Curso = {
+      id:
+        cursoEditando ??
+        `curso-${Date.now()}`,
+      nome: cursoNome.trim(),
+      descricao:
+        cursoDescricao.trim(),
+      situacao: "Ativo",
+    };
+    salvarCursos(
+      cursoEditando
+        ? catalogo.cursos.map((item) =>
+            item.id === cursoEditando
+              ? {
+                  ...registro,
+                  situacao: item.situacao,
+                }
+              : item
+          )
+        : [...catalogo.cursos, registro]
+    );
+    setCursoNome("");
+    setCursoDescricao("");
+    setCursoEditando(null);
+  };
+
+  const editarCurso = (curso: Curso) => {
+    setCursoEditando(curso.id);
+    setCursoNome(curso.nome);
+    setCursoDescricao(curso.descricao);
+  };
+
+  const alternarCurso = (curso: Curso) => {
+    salvarCursos(
+      catalogo.cursos.map((item) =>
+        item.id === curso.id
+          ? {
+              ...item,
+              situacao:
+                item.situacao === "Ativo"
+                  ? "Inativo"
+                  : "Ativo",
+            }
+          : item
+      )
+    );
+  };
+
   const salvarTurma = () => {
     const curso =
       catalogo.cursos.find(
@@ -214,10 +295,10 @@ export default function Academico({
       return;
     }
 
-    setTurmas((atuais) => [
-      ...atuais,
-      {
-        id: `turma-${Date.now()}`,
+    const registro: Turma = {
+        id:
+          turmaEditando ??
+          `turma-${Date.now()}`,
         nome: nome.trim(),
         curso: curso.nome,
         cursoId: curso.id,
@@ -230,11 +311,41 @@ export default function Academico({
             capacidade
           ),
         ativo: true,
-      },
-    ]);
+      };
+    setTurmas((atuais) =>
+      turmaEditando
+        ? atuais.map((item) =>
+            item.id === turmaEditando
+              ? {
+                  ...registro,
+                  ativo: item.ativo,
+                }
+              : item
+          )
+        : [...atuais, registro]
+    );
     setNome("");
     setCursoId("");
-    alert("Turma cadastrada.");
+    setTurmaEditando(null);
+    alert(
+      turmaEditando
+        ? "Turma atualizada."
+        : "Turma cadastrada."
+    );
+  };
+
+  const editarTurma = (turma: Turma) => {
+    setTurmaEditando(turma.id);
+    setNome(turma.nome);
+    setCursoId(turma.cursoId ?? "");
+    setUnidade(turma.unidade);
+    setTurno(turma.turno);
+    setAno(turma.ano);
+    setCapacidade(turma.capacidade);
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   };
 
   const matricular = () => {
@@ -312,6 +423,24 @@ export default function Academico({
     );
   };
 
+  const excluirMatricula = (
+    matricula: Matricula
+  ) => {
+    if (
+      !window.confirm(
+        `Excluir ${matricula.aluno_nome} desta turma?`
+      )
+    ) {
+      return;
+    }
+    setMatriculas((atuais) =>
+      atuais.filter(
+        (item) =>
+          item.id !== matricula.id
+      )
+    );
+  };
+
   const matriculasFiltradas =
     useMemo(() => {
       const termo = busca
@@ -362,11 +491,88 @@ export default function Academico({
         </p>
       </header>
 
-      <div style={estilos.grade}>
+      <section style={estilos.caixa}>
+        <h2>
+          {cursoEditando
+            ? "Editar curso"
+            : "Cadastrar curso"}
+        </h2>
+        <div style={estilos.formGrid}>
+          <Campo
+            label="Nome do curso"
+            value={cursoNome}
+            onChange={setCursoNome}
+          />
+          <Campo
+            label="Descrição"
+            value={cursoDescricao}
+            onChange={setCursoDescricao}
+          />
+        </div>
+        <div style={estilos.acoes}>
+          <button
+            style={estilos.botao}
+            onClick={salvarCurso}
+          >
+            {cursoEditando
+              ? "Salvar curso"
+              : "Cadastrar curso"}
+          </button>
+          {cursoEditando && (
+            <button
+              style={estilos.secundario}
+              onClick={() => {
+                setCursoEditando(null);
+                setCursoNome("");
+                setCursoDescricao("");
+              }}
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
+        <div style={estilos.cursosLista}>
+          {catalogo.cursos.map((curso) => (
+            <div key={curso.id} style={estilos.cursoLinha}>
+              <span>
+                <strong>{curso.nome}</strong>
+                <br />
+                <small>{curso.descricao}</small>
+              </span>
+              <div style={estilos.acoes}>
+                <button
+                  style={estilos.secundario}
+                  onClick={() =>
+                    editarCurso(curso)
+                  }
+                >
+                  Editar
+                </button>
+                <button
+                  style={estilos.secundario}
+                  onClick={() =>
+                    alternarCurso(curso)
+                  }
+                >
+                  {curso.situacao === "Ativo"
+                    ? "Inativar"
+                    : "Ativar"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div style={{ ...estilos.grade, marginTop: 24 }}>
         <section
           style={estilos.caixa}
         >
-          <h2>Nova turma</h2>
+          <h2>
+            {turmaEditando
+              ? "Editar turma"
+              : "Nova turma"}
+          </h2>
           <div
             style={
               estilos.formGrid
@@ -432,7 +638,9 @@ export default function Academico({
             style={estilos.botao}
             onClick={salvarTurma}
           >
-            Salvar turma
+            {turmaEditando
+              ? "Salvar alterações"
+              : "Salvar turma"}
           </button>
         </section>
 
@@ -533,6 +741,14 @@ export default function Academico({
                       }{" "}
                       vagas
                     </span>
+                    <button
+                      style={estilos.secundario}
+                      onClick={() =>
+                        editarTurma(turma)
+                      }
+                    >
+                      Editar turma
+                    </button>
                   </div>
                 );
               }
@@ -632,6 +848,16 @@ export default function Academico({
                     "Ativa"
                       ? "Cancelar"
                       : "Reativar"}
+                  </button>
+                  <button
+                    style={estilos.excluir}
+                    onClick={() =>
+                      excluirMatricula(
+                        matricula
+                      )
+                    }
+                  >
+                    Excluir da turma
                   </button>
                 </div>
               </div>
@@ -778,6 +1004,20 @@ const estilos: Record<
       "repeat(auto-fit,minmax(240px,1fr))",
     gap: 14,
   },
+  cursosLista: {
+    display: "grid",
+    gap: 4,
+    marginTop: 18,
+  },
+  cursoLinha: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 14,
+    padding: "12px 0",
+    borderBottom: "1px solid #e2e8f0",
+    flexWrap: "wrap",
+  },
   card: {
     display: "flex",
     flexDirection: "column",
@@ -827,6 +1067,14 @@ const estilos: Record<
     background: "white",
     border:
       "1px solid #cbd5e1",
+    borderRadius: 8,
+    padding: "9px 12px",
+    cursor: "pointer",
+  },
+  excluir: {
+    background: "#b91c1c",
+    color: "white",
+    border: "none",
     borderRadius: 8,
     padding: "9px 12px",
     cursor: "pointer",

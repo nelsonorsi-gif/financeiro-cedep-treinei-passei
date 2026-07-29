@@ -678,7 +678,8 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
       Vencimento: formatarData(conta.vencimento),
       Descrição: conta.descricao,
       Aluno: conta.alunoNome ?? "",
-      Categoria: conta.categoria,
+      [tipo === "receber" ? "Tipo de entrada" : "Tipo de saída"]:
+        conta.categoria,
       Banco: conta.banco,
       Unidade: conta.unidade,
       Valor: conta.valor,
@@ -779,7 +780,7 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
         <div style={estilos.filtros}>
           <CampoTexto label="Buscar aluno ou descrição" value={busca} onChange={setBusca} placeholder="Nome do aluno, conta ou observação..." />
           <CampoSelect label="Situação" value={situacao} opcoes={["Todos", "Pendentes", "Vencidos", "Vencem hoje", "A vencer", "Concluídos"]} onChange={(valor) => setSituacao(valor as SituacaoFiltro)} semOpcaoVazia />
-          <CampoSelect label="Categoria" value={filtroCategoria} opcoes={["Todas", ...listas.categorias]} onChange={setFiltroCategoria} semOpcaoVazia />
+          <CampoSelect label={tipo === "receber" ? "Tipo de entrada" : "Tipo de saída"} value={filtroCategoria} opcoes={["Todas", ...categoriasFormulario, ...listas.categorias.filter((item) => !categoriasFormulario.includes(item))]} onChange={setFiltroCategoria} semOpcaoVazia />
           <CampoSelect label="Banco / Conta" value={filtroBanco} opcoes={["Todos", ...listas.bancos]} onChange={setFiltroBanco} semOpcaoVazia />
           <CampoSelect label="Unidade" value={filtroUnidade} opcoes={["Todas", ...listas.unidades]} onChange={setFiltroUnidade} semOpcaoVazia />
           <CampoTexto label="Vencimento inicial" value={dataInicial} onChange={setDataInicial} type="date" />
@@ -813,7 +814,7 @@ function Contas({ tipo, onBaixar, usuarioAtual }: Props) {
                   <tr>
                     <th style={estilos.th}>Vencimento</th>
                     <th style={estilos.th}>Descrição / aluno</th>
-                    <th style={estilos.th}>Categoria</th>
+                    <th style={estilos.th}>{tipo === "receber" ? "Tipo de entrada" : "Tipo de saída"}</th>
                     <th style={estilos.th}>Banco</th>
                     <th style={estilos.th}>Unidade</th>
                     <th style={estilos.th}>Valor</th>

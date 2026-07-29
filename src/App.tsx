@@ -15,7 +15,6 @@ import Cadastros from "./Cadastros";
 import Professores, {
   type PagamentoProfessorFinanceiro,
 } from "./Professores";
-import Mensalidades from "./Mensalidades";
 import Secretaria, {
   type RecebimentoCaixa,
 } from "./Secretaria";
@@ -1913,8 +1912,6 @@ function App() {
 
     "Professores",
 
-    "Mensalidades",
-
     "Matrículas e Turmas",
 
     "Registro de Presença",
@@ -2612,7 +2609,9 @@ function App() {
 
         {pagina ===
           "Cadastros" && (
-          <Cadastros />
+          <Cadastros
+            usuarioAtual={usuarioAtual}
+          />
         )}
 
         {pagina ===
@@ -2625,11 +2624,6 @@ function App() {
               registrarPagamentoProfessor
             }
           />
-        )}
-
-        {pagina ===
-          "Mensalidades" && (
-          <Mensalidades />
         )}
 
         {pagina ===
@@ -2728,6 +2722,7 @@ function App() {
                   lancamentos={[
                     ...receitas,
                   ].reverse()}
+                  paginar
 
                   editarLancamento={
                     editarLancamento
@@ -2808,6 +2803,7 @@ function App() {
                   lancamentos={[
                     ...despesas,
                   ].reverse()}
+                  paginar
 
                   editarLancamento={
                     editarLancamento
@@ -4154,6 +4150,8 @@ function Tabela({
   editarLancamento,
 
   excluirLancamento,
+
+  paginar = false,
 }: {
   lancamentos:
     Lancamento[];
@@ -4167,7 +4165,32 @@ function Tabela({
     lancamento:
       Lancamento
   ) => void;
+
+  paginar?: boolean;
 }) {
+  const [paginaTabela, setPaginaTabela] =
+    useState(1);
+  const porPagina = 15;
+  const totalPaginas = Math.max(
+    1,
+    Math.ceil(
+      lancamentos.length / porPagina
+    )
+  );
+  const paginaValida = Math.min(
+    paginaTabela,
+    totalPaginas
+  );
+  const itensTabela = paginar
+    ? lancamentos.slice(
+        (paginaValida - 1) * porPagina,
+        paginaValida * porPagina
+      )
+    : lancamentos;
+
+  useEffect(() => {
+    setPaginaTabela(1);
+  }, [lancamentos.length, paginar]);
   const moedaTabela = (
     valor: number
   ) =>
@@ -4207,6 +4230,7 @@ function Tabela({
   };
 
   return (
+    <>
     <div
       className="tabela-scroll"
       style={
@@ -4306,7 +4330,7 @@ function Tabela({
         </thead>
 
         <tbody>
-          {lancamentos.map(
+          {itensTabela.map(
             (item) => (
               <tr
                 key={
@@ -4465,6 +4489,42 @@ function Tabela({
         </tbody>
       </table>
     </div>
+    {paginar && totalPaginas > 1 && (
+      <div style={estilos.paginacao}>
+        <button
+          style={estilos.botaoSecundario}
+          disabled={paginaValida === 1}
+          onClick={() =>
+            setPaginaTabela((atual) =>
+              Math.max(1, atual - 1)
+            )
+          }
+        >
+          Anterior
+        </button>
+        <strong>
+          Página {paginaValida} de{" "}
+          {totalPaginas}
+        </strong>
+        <button
+          style={estilos.botaoSecundario}
+          disabled={
+            paginaValida === totalPaginas
+          }
+          onClick={() =>
+            setPaginaTabela((atual) =>
+              Math.min(
+                totalPaginas,
+                atual + 1
+              )
+            )
+          }
+        >
+          Próxima
+        </button>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -5186,7 +5246,6 @@ const estilos: Record<
 
     paddingBottom: 4,
   },
-
   tabela: {
     width: "100%",
 

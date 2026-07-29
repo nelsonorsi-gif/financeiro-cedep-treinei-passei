@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { UsuarioSessao } from "./Acesso";
+import {
+  carregarConfiguracoes,
+} from "./Configuracoes";
 import { supabase } from "./lib/supabase";
 
 export type PagamentoCompromisso = {
@@ -100,6 +103,11 @@ export default function CompromissosMensais({
   const [filtro, setFiltro] = useState("Todos");
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
   const [filtroBeneficiario, setFiltroBeneficiario] = useState("Todos");
+  const configuracoes =
+    useMemo(
+      carregarConfiguracoes,
+      []
+    );
 
   const carregar = useCallback(async () => {
     if (!supabase) return;
@@ -368,7 +376,25 @@ export default function CompromissosMensais({
             </select>
           </label>
           <Campo label="Funcionário / favorecido" value={beneficiario} onChange={setBeneficiario} />
-          <Campo label="Categoria" value={categoria} onChange={setCategoria} />
+          <label style={estilos.campo}>
+            <strong>Tipo de saída</strong>
+            <select
+              style={estilos.input}
+              value={categoria}
+              onChange={(e) =>
+                setCategoria(e.target.value)
+              }
+            >
+              <option value="">Selecione...</option>
+              {configuracoes.tiposSaida.map(
+                (item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
           <Campo label="Valor padrão" value={valor} onChange={setValor} placeholder="Ex.: 1.500,00" />
           <Campo label="Dia do vencimento" type="number" value={dia} onChange={setDia} />
           <Campo label="Banco / conta" value={banco} onChange={setBanco} />
@@ -412,7 +438,7 @@ export default function CompromissosMensais({
             <option>Parcial</option>
             <option>Pago</option>
           </select>
-          <select style={estilos.inputFiltro} value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+          <select aria-label="Tipo de saída" style={estilos.inputFiltro} value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
             <option>Todas</option>
             {categoriasFiltro.map((item) => <option key={item}>{item}</option>)}
           </select>

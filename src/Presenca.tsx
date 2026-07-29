@@ -174,14 +174,14 @@ export default function Presenca({
       <html lang="pt-BR"><head><meta charset="utf-8">
       <title>Lista de presença - ${escaparHtml(turma.nome)}</title>
       <style>
-        @page { size: A4 portrait; margin: 10mm; }
+        @page { size: A4 portrait; margin: 8mm 4mm 8mm 8mm; }
         * { box-sizing: border-box; }
         body { font-family: Arial, sans-serif; color: #111827; margin: 0; }
         header { display:flex; align-items:center; gap:18px; border-bottom:2px solid #17233a; padding-bottom:10px; }
         img { width:110px; max-height:60px; object-fit:contain; }
         h1 { font-size:20px; margin:0 0 5px; }
         p { margin:3px 0; font-size:12px; }
-        table { width:100%; border-collapse:collapse; margin-top:12px; font-size:11px; }
+        table { width:99%; border-collapse:collapse; margin-top:12px; font-size:11px; }
         th, td { border:1px solid #475569; padding:6px; height:29px; }
         th { background:#e8edf4; text-align:left; }
         th:first-child, td:first-child { width:35px; text-align:center; }
