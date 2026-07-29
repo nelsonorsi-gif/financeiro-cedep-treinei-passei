@@ -446,6 +446,104 @@ function Relatorios({
       );
     };
 
+  const exportarPdf = () => {
+    if (filtrados.length === 0) {
+      alert("Não há dados para gerar o PDF.");
+      return;
+    }
+
+    const escapar = (valor: string) =>
+      valor
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    const paginas: LancamentoRelatorio[][] = [];
+    for (let indice = 0; indice < filtrados.length; indice += 32) {
+      paginas.push(filtrados.slice(indice, indice + 32));
+    }
+    const resumoFiltros = [
+      competencia !== "Todas" ? `Competência: ${competencia}` : "",
+      dataInicial ? `De: ${formatarDataTela(dataInicial)}` : "",
+      dataFinal ? `Até: ${formatarDataTela(dataFinal)}` : "",
+      tipo !== "Todos" ? `Tipo: ${tipo}` : "",
+      banco !== "Todos" ? `Banco: ${banco}` : "",
+      unidade !== "Todas" ? `Unidade: ${unidade}` : "",
+    ]
+      .filter(Boolean)
+      .join(" • ");
+    const conteudo = paginas
+      .map(
+        (pagina, numero) => `
+        <section class="pagina">
+          <header>
+            <img src="/logo-cedep.png" alt="CEDEP">
+            <div><h1>Relatório financeiro</h1>
+            <p>${escapar(resumoFiltros || "Todos os períodos e movimentações")}</p></div>
+            <span>Página ${numero + 1}/${paginas.length}</span>
+          </header>
+          ${
+            numero === 0
+              ? `<div class="totais">
+                  <b>Entradas: ${moeda(totalEntradas)}</b>
+                  <b>Saídas: ${moeda(totalSaidas)}</b>
+                  <b>Saldo: ${moeda(saldo)}</b>
+                  <b>${filtrados.length} lançamento(s)</b>
+                </div>`
+              : ""
+          }
+          <table><thead><tr>
+            <th>Data</th><th>Descrição</th><th>Tipo</th><th>Banco</th>
+            <th>Entrada</th><th>Saída</th><th>Unidade</th>
+          </tr></thead><tbody>
+          ${pagina
+            .map(
+              (item) => `<tr>
+                <td>${escapar(item.data ? formatarDataTela(item.data) : item.dia)}</td>
+                <td>${escapar(item.descricao)}</td>
+                <td>${escapar(item.tipoEntrada || item.tipoSaida)}</td>
+                <td>${escapar(item.formaPagamento)}</td>
+                <td>${item.entrada > 0 ? moeda(item.entrada) : ""}</td>
+                <td>${item.saida > 0 ? moeda(item.saida) : ""}</td>
+                <td>${escapar(item.unidade)}</td>
+              </tr>`
+            )
+            .join("")}
+          </tbody></table>
+        </section>`
+      )
+      .join("");
+    const janela = window.open("", "_blank", "width=1100,height=800");
+    if (!janela) {
+      alert("O navegador bloqueou a janela do relatório.");
+      return;
+    }
+    janela.document.write(`<!doctype html><html lang="pt-BR"><head>
+      <meta charset="utf-8"><title>Relatório financeiro CEDEP</title>
+      <style>
+        @page { size:A4 landscape; margin:8mm; }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:Arial,sans-serif; color:#111827; }
+        .pagina { break-after:page; min-height:185mm; }
+        .pagina:last-child { break-after:auto; }
+        header { display:flex; align-items:center; gap:14px; border-bottom:2px solid #17233a; padding-bottom:7px; }
+        header img { width:90px; max-height:46px; object-fit:contain; }
+        header div { flex:1; } h1 { margin:0; font-size:17px; } p { margin:3px 0 0; font-size:8pt; }
+        header span { font-size:8pt; }
+        .totais { display:flex; gap:24px; margin:7px 0; padding:7px; background:#eef2f7; font-size:8.5pt; }
+        table { width:100%; border-collapse:collapse; margin-top:7px; font-size:7.5pt; }
+        th { background:#17233a; color:white; padding:4px; text-align:left; }
+        td { border-bottom:1px solid #d9e0e9; padding:3.5px 4px; }
+        td:nth-child(5),td:nth-child(6) { text-align:right; white-space:nowrap; }
+        .acoes { margin-bottom:8px; }
+        @media print { .acoes { display:none; } }
+      </style></head><body>
+      <div class="acoes"><button onclick="window.print()">Imprimir / Salvar PDF</button></div>
+      ${conteudo}<script>window.onload=()=>setTimeout(()=>window.print(),350)</script>
+      </body></html>`);
+    janela.document.close();
+  };
+
   /* =======================================================
      LIMPAR FILTROS
   ======================================================= */
@@ -697,6 +795,13 @@ function Relatorios({
             }
           >
             Exportar Excel
+          </button>
+
+          <button
+            onClick={exportarPdf}
+            style={estilos.botaoPdf}
+          >
+            Exportar PDF / Imprimir
           </button>
 
           <button
@@ -1262,6 +1367,16 @@ const estilos: Record<
 
     cursor: "pointer",
 
+    fontWeight: "bold",
+  },
+
+  botaoPdf: {
+    background: "#17233a",
+    color: "white",
+    border: "none",
+    borderRadius: 9,
+    padding: "13px 20px",
+    cursor: "pointer",
     fontWeight: "bold",
   },
 

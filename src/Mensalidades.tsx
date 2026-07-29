@@ -138,8 +138,6 @@ function Mensalidades() {
     useState("");
   const [parcelas, setParcelas] =
     useState("1");
-  const [banco, setBanco] =
-    useState("");
   const [unidade, setUnidade] =
     useState("CEDEP");
   const [planoEditando, setPlanoEditando] =
@@ -364,7 +362,6 @@ function Mensalidades() {
     setCursoId("");
     setValor("");
     setParcelas("1");
-    setBanco("");
     setUnidade("CEDEP");
     setPlanoEditando(null);
   };
@@ -526,9 +523,9 @@ function Mensalidades() {
       return;
     }
 
-    if (!banco || !unidade) {
+    if (!unidade) {
       alert(
-        "Selecione banco e unidade."
+        "Selecione a unidade."
       );
       return;
     }
@@ -544,7 +541,7 @@ function Mensalidades() {
         cursoSelecionado.nome,
       valor: valorNumerico,
       parcelas: quantidade,
-      banco,
+      banco: "",
       unidade,
       situacao: "Ativo",
     };
@@ -595,7 +592,6 @@ function Mensalidades() {
     setParcelas(
       String(plano.parcelas)
     );
-    setBanco(plano.banco);
     setUnidade(plano.unidade);
     window.scrollTo({
       top: 0,
@@ -654,9 +650,6 @@ function Mensalidades() {
       aluno.parcelas > 0
         ? aluno.parcelas
         : plano.parcelas;
-    const bancoMensalidade =
-      aluno.bancoMensalidade ||
-      plano.banco;
 
     const duplicada =
       dados.geracoes.some(
@@ -711,8 +704,7 @@ function Mensalidades() {
             ),
           categoria:
             "Mensalidade",
-          banco:
-            bancoMensalidade,
+          banco: "",
           unidade:
             aluno.unidade ||
             plano.unidade,
@@ -990,14 +982,6 @@ function Mensalidades() {
             type="number"
             value={parcelas}
             onChange={setParcelas}
-          />
-          <CampoSelect
-            label="Banco / Conta"
-            value={banco}
-            opcoes={
-              configuracoes.bancos
-            }
-            onChange={setBanco}
           />
           <CampoSelect
             label="Unidade"

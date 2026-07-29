@@ -227,6 +227,8 @@ const parceiroVazio = (): Omit<
 });
 
 function Cadastros() {
+  const exibirCamposFinanceirosLegados =
+    useMemo(() => false, []);
   const [aba, setAba] =
     useState<
       | "Alunos"
@@ -428,7 +430,7 @@ function Cadastros() {
       planoNome: plano.nome,
       parcelas: plano.parcelas,
       bancoMensalidade:
-        plano.banco,
+        plano.banco ?? "",
       unidade:
         plano.unidade ||
         atual.unidade,
@@ -944,6 +946,8 @@ function Cadastros() {
               />
             </div>
 
+            {exibirCamposFinanceirosLegados && (
+              <>
             <h3
               style={{
                 marginTop: 28,
@@ -1179,6 +1183,34 @@ function Cadastros() {
                   )
                 }
               />
+            </div>
+
+              </>
+            )}
+
+            <div
+              style={{
+                marginTop: 28,
+                padding: 16,
+                borderLeft:
+                  "4px solid #2563eb",
+                borderRadius: 8,
+                background: "#eff6ff",
+                color: "#1e3a8a",
+                lineHeight: 1.5,
+              }}
+            >
+              <strong>
+                Curso e condições financeiras
+              </strong>
+              <br />
+              Agora são definidos na
+              geração do contrato. Assim,
+              o cadastro do aluno fica
+              somente com os dados pessoais
+              e do responsável, evitando
+              valores repetidos ou
+              divergentes.
             </div>
 
             <h3

@@ -22,6 +22,7 @@ import Secretaria, {
 import Documentos from "./Documentos";
 import Nuvem from "./Nuvem";
 import Academico from "./Academico";
+import Presenca from "./Presenca";
 import GestaoFinanceira from "./GestaoFinanceira";
 import CompromissosMensais, {
   type PagamentoCompromisso,
@@ -1916,6 +1917,8 @@ function App() {
 
     "Matrículas e Turmas",
 
+    "Registro de Presença",
+
     "Secretaria e Caixa",
 
     "Documentos",
@@ -2639,6 +2642,15 @@ function App() {
         )}
 
         {pagina ===
+          "Registro de Presença" && (
+          <Presenca
+            usuarioAtual={
+              usuarioAtual
+            }
+          />
+        )}
+
+        {pagina ===
           "Secretaria e Caixa" && (
           <Secretaria
             onRegistrarReceita={
@@ -3268,6 +3280,9 @@ function App() {
             }
             onRegistrarPagamento={
               registrarPagamentoCompromisso
+            }
+            onAbrirContasPagar={() =>
+              setPagina("Contas a Pagar")
             }
           />
         )}

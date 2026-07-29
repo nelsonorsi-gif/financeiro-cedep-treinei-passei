@@ -15,7 +15,7 @@ export type Plano = {
   curso: string;
   valor: number;
   parcelas: number;
-  banco: string;
+  banco?: string;
   unidade: string;
   situacao: "Ativo" | "Inativo";
 };

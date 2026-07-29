@@ -79,9 +79,11 @@ function atualizarEspelhoPessoal(ocorrencias: Ocorrencia[]) {
 export default function CompromissosMensais({
   usuarioAtual,
   onRegistrarPagamento,
+  onAbrirContasPagar,
 }: {
   usuarioAtual: UsuarioSessao;
   onRegistrarPagamento: (pagamento: PagamentoCompromisso) => void;
+  onAbrirContasPagar?: () => void;
 }) {
   const [compromissos, setCompromissos] = useState<Compromisso[]>([]);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
@@ -96,6 +98,8 @@ export default function CompromissosMensais({
   const [unidade, setUnidade] = useState("CEDEP");
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("Todos");
+  const [filtroCategoria, setFiltroCategoria] = useState("Todas");
+  const [filtroBeneficiario, setFiltroBeneficiario] = useState("Todos");
 
   const carregar = useCallback(async () => {
     if (!supabase) return;
@@ -297,9 +301,27 @@ export default function CompromissosMensais({
     return ocorrencias.filter(
       (item) =>
         (filtro === "Todos" || item.escopo === filtro || item.status === filtro) &&
+        (filtroCategoria === "Todas" || item.categoria === filtroCategoria) &&
+        (filtroBeneficiario === "Todos" ||
+          item.beneficiario === filtroBeneficiario) &&
         (!termo || `${item.descricao} ${item.beneficiario}`.toLowerCase().includes(termo))
     );
-  }, [busca, filtro, ocorrencias]);
+  }, [busca, filtro, filtroCategoria, filtroBeneficiario, ocorrencias]);
+
+  const categoriasFiltro = useMemo(
+    () =>
+      Array.from(
+        new Set(ocorrencias.map((item) => item.categoria).filter(Boolean))
+      ).sort(),
+    [ocorrencias]
+  );
+  const beneficiariosFiltro = useMemo(
+    () =>
+      Array.from(
+        new Set(ocorrencias.map((item) => item.beneficiario).filter(Boolean))
+      ).sort(),
+    [ocorrencias]
+  );
 
   const empresarialPrevisto = ocorrencias
     .filter((item) => item.escopo === "Empresarial" && item.status !== "Dispensado")
@@ -390,6 +412,19 @@ export default function CompromissosMensais({
             <option>Parcial</option>
             <option>Pago</option>
           </select>
+          <select style={estilos.inputFiltro} value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+            <option>Todas</option>
+            {categoriasFiltro.map((item) => <option key={item}>{item}</option>)}
+          </select>
+          <select style={estilos.inputFiltro} value={filtroBeneficiario} onChange={(e) => setFiltroBeneficiario(e.target.value)}>
+            <option>Todos</option>
+            {beneficiariosFiltro.map((item) => <option key={item}>{item}</option>)}
+          </select>
+          {onAbrirContasPagar && (
+            <button style={estilos.botaoAbrirContas} onClick={onAbrirContasPagar}>
+              Abrir Contas a Pagar
+            </button>
+          )}
         </div>
         <div style={estilos.tabelaContainer}>
           <table style={estilos.tabela}>
@@ -466,4 +501,5 @@ const estilos: Record<string, CSSProperties> = {
   status: { display: "inline-block", padding: "6px 9px", borderRadius: 20, background: "#eef2ff", fontWeight: 700 },
   acoesLinha: { display: "flex", gap: 7 },
   botaoPagar: { background: "#15803d", color: "white", border: 0, borderRadius: 7, padding: "8px 10px", cursor: "pointer" },
+  botaoAbrirContas: { background: "#17233a", color: "white", border: 0, borderRadius: 9, padding: "12px 14px", cursor: "pointer", fontWeight: 700 },
 };

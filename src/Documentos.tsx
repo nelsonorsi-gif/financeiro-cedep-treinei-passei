@@ -21,6 +21,9 @@ import {
   CHAVE_MENSALIDADES,
   type Plano,
 } from "./Mensalidades";
+import type {
+  Curso,
+} from "./CatalogoCursos";
 
 import {
   CHAVE_SECRETARIA,
@@ -41,6 +44,7 @@ type ConfiguracaoPix = {
 
 type AnoContrato = {
   anoLetivo: string;
+  cursoId?: string;
   curso: string;
   parcelas: string;
   valorPadrao: string;
@@ -79,6 +83,30 @@ const converterMoeda = (
   return Number.isFinite(numero)
     ? numero
     : 0;
+};
+
+const adicionarMeses = (
+  dataIso: string,
+  quantidade: number
+) => {
+  const [ano, mes, dia] =
+    dataIso.split("-").map(Number);
+  const data = new Date(
+    ano,
+    mes - 1 + quantidade,
+    1
+  );
+  const ultimoDia =
+    new Date(
+      data.getFullYear(),
+      data.getMonth() + 1,
+      0
+    ).getDate();
+  return `${data.getFullYear()}-${String(
+    data.getMonth() + 1
+  ).padStart(2, "0")}-${String(
+    Math.min(dia, ultimoDia)
+  ).padStart(2, "0")}`;
 };
 
 const moeda = (valor: number) =>
@@ -551,6 +579,8 @@ function Documentos() {
     useState<Aluno[]>([]);
   const [planos, setPlanos] =
     useState<Plano[]>([]);
+  const [cursos, setCursos] =
+    useState<Curso[]>([]);
   const [contas, setContas] =
     useState<Conta[]>([]);
   const [recebimentos, setRecebimentos] =
@@ -784,6 +814,11 @@ function Documentos() {
       if (mensalidades) {
         const dados =
           JSON.parse(mensalidades);
+        setCursos(
+          Array.isArray(dados.cursos)
+            ? dados.cursos
+            : []
+        );
         setPlanos(
           Array.isArray(dados.planos)
             ? dados.planos
@@ -977,6 +1012,89 @@ function Documentos() {
         )
         .join("");
 
+    const agora =
+      new Date().toISOString();
+    const novasParcelas =
+      anosFinanceiros.flatMap(
+        (ano) =>
+          Array.from(
+            {
+              length:
+                ano.quantidadeParcelas,
+            },
+            (_, indice): Conta => ({
+              id: `contrato-${aluno.id}-${ano.anoLetivo}-${indice + 1}`,
+              descricao:
+                `${ano.curso} - ${aluno.nome} - ${indice + 1}/${ano.quantidadeParcelas}`,
+              valor:
+                ano.valorPadraoNumerico,
+              vencimento:
+                adicionarMeses(
+                  ano.primeiroVencimento,
+                  indice
+                ),
+              categoria:
+                "Mensalidade",
+              banco: "",
+              unidade:
+                aluno.unidade ||
+                plano.unidade ||
+                "CEDEP",
+              observacao:
+                `Aluno: ${aluno.nome} | Curso: ${ano.curso} | Ano letivo: ${ano.anoLetivo} | Contrato: ${aluno.id}`,
+              status: "Pendente",
+              tipo: "receber",
+              origem:
+                "mensalidade",
+              alunoId: aluno.id,
+              alunoNome:
+                aluno.nome,
+              criadoEm: agora,
+              desconto:
+                descontoPontualidade,
+            })
+          )
+      );
+    const porId = new Map(
+      contas.map((item) => [
+        item.id,
+        item,
+      ])
+    );
+    novasParcelas.forEach(
+      (parcela) => {
+        const existente =
+          porId.get(parcela.id);
+        porId.set(
+          parcela.id,
+          existente &&
+            existente.status !==
+              "Pendente"
+            ? existente
+            : {
+                ...existente,
+                ...parcela,
+              }
+        );
+      }
+    );
+    const contasAtualizadas =
+      Array.from(porId.values());
+    localStorage.setItem(
+      CHAVE_CONTAS,
+      JSON.stringify(
+        contasAtualizadas
+      )
+    );
+    setContas(
+      contasAtualizadas
+    );
+    window.dispatchEvent(
+      new Event(
+        "financeiro-contas-atualizadas"
+      )
+    );
+
     salvarConfiguracaoContrato(
       false
     );
@@ -1024,7 +1142,7 @@ function Documentos() {
           <div><strong>Vencimento:</strong> dia ${escapar(diaVencimentoContrato)} de cada mês</div>
           <div><strong>Desconto especial por pontualidade:</strong> ${escapar(moeda(descontoPontualidade))}</div>
           <div><strong>Valor total do curso:</strong> ${escapar(moeda(valorTotalCurso))}</div>
-          <div><strong>Banco/conta:</strong> ${escapar(aluno.bancoMensalidade || plano.banco)}</div>
+          <div><strong>Forma de recebimento:</strong> banco/conta será registrado no momento da baixa</div>
         </div>
         <h3>Cursos e condições financeiras por ano letivo</h3>
         <table class="tabela-financeira">
@@ -1257,7 +1375,12 @@ function Documentos() {
                 ...configuracaoPix,
                 chave:
                   configuracaoPix.chave.trim(),
-                valor: item.valor,
+                valor: Math.max(
+                  item.valor -
+                    (item.desconto ??
+                      0),
+                  0
+                ),
                 identificador:
                   item.id,
               });
@@ -1342,7 +1465,7 @@ function Documentos() {
                               </div>
                               <div class="duas-colunas">
                                 <div class="campo-carne"><small>Data de vencimento</small><strong>${escapar(formatarData(item.vencimento))}</strong></div>
-                                <div class="campo-carne valor-carne"><small>Valor</small><strong>${escapar(moeda(item.valor))}</strong></div>
+                                <div class="campo-carne valor-carne"><small>Valor até o vencimento</small><strong>${escapar(moeda(Math.max(item.valor - (item.desconto ?? 0), 0)))}</strong></div>
                               </div>
                               <div class="duas-colunas">
                                 <div class="campo-carne"><small>Juros</small><strong>&nbsp;</strong></div>
@@ -1371,7 +1494,7 @@ function Documentos() {
                                 </div>
                                 <div class="duas-colunas">
                                   <div class="campo-carne curso-carne"><small>Curso</small><strong>${escapar(curso)}</strong></div>
-                                  <div class="campo-carne valor-carne"><small>Valor</small><strong>${escapar(moeda(item.valor))}</strong></div>
+                                  <div class="campo-carne valor-carne"><small>Valor até o vencimento</small><strong>${escapar(moeda(Math.max(item.valor - (item.desconto ?? 0), 0)))}</strong></div>
                                 </div>
                                 <div class="instrucoes">
                                   <p><strong>Pagamento:</strong> na Secretaria da Escola ou via PIX.</p>
@@ -1562,6 +1685,8 @@ function Documentos() {
                             indice
                           ) => ({
                             ...ano,
+                            cursoId:
+                              selecionado.cursoId,
                             curso:
                               selecionado.curso,
                             parcelas:
@@ -1769,14 +1894,33 @@ function Documentos() {
                           )
                         }
                       />
-                      <CampoTexto
+                      <CampoSelect
                         label="Curso deste ano"
                         value={
-                          ano.curso
+                          ano.cursoId ||
+                          cursos.find(
+                            (item) =>
+                              item.nome ===
+                              ano.curso
+                          )?.id ||
+                          ""
                         }
-                        placeholder="Ex.: PAS-UEM 1º ano com específicas"
+                        opcoes={cursos
+                          .filter(
+                            (item) =>
+                              item.situacao ===
+                              "Ativo"
+                          )
+                          .map(
+                            (item) => ({
+                              valor:
+                                item.id,
+                              rotulo:
+                                item.nome,
+                            })
+                          )}
                         onChange={(
-                          valor
+                          cursoId
                         ) =>
                           setAnosContrato(
                             (atuais) =>
@@ -1789,8 +1933,17 @@ function Documentos() {
                                   indice
                                     ? {
                                         ...item,
+                                        cursoId,
                                         curso:
-                                          valor,
+                                          cursos.find(
+                                            (
+                                              curso
+                                            ) =>
+                                              curso.id ===
+                                              cursoId
+                                          )
+                                            ?.nome ||
+                                          "",
                                       }
                                     : item
                               )
@@ -1943,7 +2096,7 @@ function Documentos() {
                   gerarContrato
                 }
               >
-                Gerar contrato
+                Gerar contrato e parcelas
               </Botao>
             </div>
           </>
