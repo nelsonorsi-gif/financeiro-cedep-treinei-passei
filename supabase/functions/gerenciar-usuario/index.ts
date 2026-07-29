@@ -238,6 +238,35 @@ Deno.serve(async (requisicao) => {
         ? corpo.id
         : "";
 
+    if (!id) {
+      const {
+        data: usuariosExistentes,
+        error: erroListagem,
+      } =
+        await admin.auth.admin
+          .listUsers({
+            page: 1,
+            perPage: 1000,
+          });
+
+      if (erroListagem) {
+        throw erroListagem;
+      }
+
+      const existente =
+        usuariosExistentes.users.find(
+          (usuario) =>
+            usuario.email
+              ?.trim()
+              .toLowerCase() ===
+            email
+        );
+
+      if (existente) {
+        id = existente.id;
+      }
+    }
+
     if (id) {
       const atributos: {
         email: string;
