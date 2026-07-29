@@ -793,10 +793,30 @@ export function Usuarios({
       supabaseConfigurado &&
       supabase
     ) {
+      const {
+        data: {
+          session,
+        },
+      } =
+        await supabase.auth
+          .getSession();
+
+      if (!session) {
+        setProcessando(false);
+        alert(
+          "Sua sessão expirou. Entre novamente como administrador."
+        );
+        return;
+      }
+
       const { data, error } =
         await supabase.functions.invoke(
           "gerenciar-usuario",
           {
+            headers: {
+              Authorization:
+                `Bearer ${session.access_token}`,
+            },
             body: {
               acao: "salvar",
               id:
@@ -967,10 +987,31 @@ export function Usuarios({
       )
     ) {
       setProcessando(true);
+
+      const {
+        data: {
+          session,
+        },
+      } =
+        await supabase.auth
+          .getSession();
+
+      if (!session) {
+        setProcessando(false);
+        alert(
+          "Sua sessão expirou. Entre novamente como administrador."
+        );
+        return;
+      }
+
       const { error } =
         await supabase.functions.invoke(
           "gerenciar-usuario",
           {
+            headers: {
+              Authorization:
+                `Bearer ${session.access_token}`,
+            },
             body: {
               acao: "alterar-status",
               id,
