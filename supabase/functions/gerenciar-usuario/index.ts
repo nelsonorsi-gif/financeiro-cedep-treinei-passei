@@ -43,6 +43,10 @@ Deno.serve(async (requisicao) => {
       Deno.env.get(
         "SUPABASE_SERVICE_ROLE_KEY"
       );
+    const chavePublica =
+      Deno.env.get(
+        "SUPABASE_ANON_KEY"
+      );
     const autorizacao =
       requisicao.headers.get(
         "Authorization"
@@ -51,6 +55,7 @@ Deno.serve(async (requisicao) => {
     if (
       !url ||
       !chaveServico ||
+      !chavePublica ||
       !autorizacao
     ) {
       return responder(
@@ -77,11 +82,28 @@ Deno.serve(async (requisicao) => {
         /^Bearer\s+/i,
         ""
       );
+    const clienteUsuario =
+      createClient(
+        url,
+        chavePublica,
+        {
+          global: {
+            headers: {
+              Authorization:
+                autorizacao,
+            },
+          },
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+        }
+      );
     const {
       data: autenticacao,
       error: erroAutenticacao,
     } =
-      await admin.auth.getUser(
+      await clienteUsuario.auth.getUser(
         token
       );
 
@@ -101,7 +123,7 @@ Deno.serve(async (requisicao) => {
     const {
       data: solicitante,
       error: erroPerfil,
-    } = await admin
+    } = await clienteUsuario
       .from("profiles")
       .select("perfil, ativo")
       .eq(
