@@ -138,10 +138,29 @@ Deno.serve(async (requisicao) => {
         "Administrador" ||
       !solicitante.ativo
     ) {
+      console.error(
+        "Administrador não reconhecido:",
+        JSON.stringify({
+          id:
+            autenticacao.user.id,
+          email:
+            autenticacao.user.email,
+          perfil:
+            solicitante?.perfil,
+          ativo:
+            solicitante?.ativo,
+          erro:
+            erroPerfil?.message,
+        })
+      );
+
       return responder(
         {
           erro:
-            "Somente o administrador pode gerenciar usuários.",
+            `Somente o administrador pode gerenciar usuários. Perfil online: ${
+              solicitante?.perfil ??
+              "não encontrado"
+            }.`,
         },
         403
       );
