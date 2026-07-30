@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useMemo,
   useState,
   type CSSProperties,
@@ -74,6 +75,13 @@ function Relatorios({
     busca,
     setBusca,
   ] = useState("");
+
+  const [
+    paginaResultado,
+    setPaginaResultado,
+  ] = useState(1);
+
+  const porPagina = 15;
 
   const moeda = (
     valor: number
@@ -283,6 +291,41 @@ function Relatorios({
   const saldo =
     totalEntradas -
     totalSaidas;
+
+  const totalPaginas =
+    Math.max(
+      1,
+      Math.ceil(
+        filtrados.length /
+          porPagina
+      )
+    );
+
+  const paginaValida =
+    Math.min(
+      paginaResultado,
+      totalPaginas
+    );
+
+  const resultadosPagina =
+    filtrados.slice(
+      (paginaValida - 1) *
+        porPagina,
+      paginaValida *
+        porPagina
+    );
+
+  useEffect(() => {
+    setPaginaResultado(1);
+  }, [
+    tipo,
+    banco,
+    unidade,
+    competencia,
+    dataInicial,
+    dataFinal,
+    busca,
+  ]);
 
   /* =======================================================
      EXPORTAR EXCEL
@@ -883,11 +926,12 @@ function Relatorios({
             para os filtros selecionados.
           </div>
         ) : (
-          <div
-            style={
-              estilos.tabelaContainer
-            }
-          >
+          <>
+            <div
+              style={
+                estilos.tabelaContainer
+              }
+            >
             <table
               style={
                 estilos.tabela
@@ -970,7 +1014,7 @@ function Relatorios({
               </thead>
 
               <tbody>
-                {filtrados.map(
+                {resultadosPagina.map(
                   (item) => (
                     <tr
                       key={
@@ -1077,8 +1121,63 @@ function Relatorios({
                   )
                 )}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+
+            {totalPaginas > 1 && (
+              <div
+                style={
+                  estilos.paginacao
+                }
+              >
+                <button
+                  style={
+                    estilos.botaoSecundario
+                  }
+                  disabled={
+                    paginaValida === 1
+                  }
+                  onClick={() =>
+                    setPaginaResultado(
+                      (atual) =>
+                        Math.max(
+                          1,
+                          atual - 1
+                        )
+                    )
+                  }
+                >
+                  Anterior
+                </button>
+
+                <strong>
+                  Página {paginaValida} de{" "}
+                  {totalPaginas}
+                </strong>
+
+                <button
+                  style={
+                    estilos.botaoSecundario
+                  }
+                  disabled={
+                    paginaValida ===
+                    totalPaginas
+                  }
+                  onClick={() =>
+                    setPaginaResultado(
+                      (atual) =>
+                        Math.min(
+                          totalPaginas,
+                          atual + 1
+                        )
+                    )
+                  }
+                >
+                  Próxima
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
     </div>
@@ -1391,6 +1490,20 @@ const estilos: Record<
     padding: "13px 20px",
 
     cursor: "pointer",
+  },
+
+  paginacao: {
+    display: "flex",
+
+    justifyContent: "center",
+
+    alignItems: "center",
+
+    gap: 14,
+
+    flexWrap: "wrap",
+
+    marginTop: 22,
   },
 
   resumoFiltro: {

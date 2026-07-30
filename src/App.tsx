@@ -3105,6 +3105,8 @@ function App() {
                         ...movimentacoesBanco,
                       ].reverse()}
 
+                      paginar
+
                       editarLancamento={
                         editarLancamento
                       }
