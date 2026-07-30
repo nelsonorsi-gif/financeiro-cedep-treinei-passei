@@ -123,7 +123,7 @@ Deno.serve(async (requisicao) => {
     const {
       data: solicitante,
       error: erroPerfil,
-    } = await clienteUsuario
+    } = await admin
       .from("profiles")
       .select("perfil, ativo")
       .eq(
