@@ -145,6 +145,62 @@ const salvarUsuarios = (
     JSON.stringify(usuarios)
   );
 
+const SENHA_MINIMA_ONLINE = 8;
+
+const normalizarEmail = (valor: string) =>
+  valor.trim().toLowerCase();
+
+const emailValido = (valor: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    normalizarEmail(valor)
+  );
+
+const mensagemErroAcesso = (
+  erro: unknown
+) => {
+  const mensagem =
+    erro instanceof Error
+      ? erro.message
+      : typeof erro === "string"
+        ? erro
+        : "Erro inesperado.";
+  const texto =
+    mensagem.toLowerCase();
+
+  if (
+    texto.includes("invalid email") ||
+    texto.includes("email address")
+  ) {
+    return "Informe um e-mail válido, por exemplo: secretaria@empresa.com.br.";
+  }
+
+  if (
+    texto.includes("already") ||
+    texto.includes("registered") ||
+    texto.includes("exists")
+  ) {
+    return "Este e-mail já possui um acesso cadastrado.";
+  }
+
+  if (
+    texto.includes("password") &&
+    (texto.includes("short") ||
+      texto.includes("least"))
+  ) {
+    return `A senha deve ter pelo menos ${SENHA_MINIMA_ONLINE} caracteres.`;
+  }
+
+  if (
+    texto.includes("jwt") ||
+    texto.includes("session") ||
+    texto.includes("sessão")
+  ) {
+    return "Sua sessão expirou. Saia do ERP, entre novamente como administrador e repita o cadastro.";
+  }
+
+  return mensagem;
+};
+
 const chamarGerenciamentoUsuario =
   async (
     corpo: Record<
@@ -429,6 +485,13 @@ export function TelaLoginOnline({
       return;
     }
 
+    if (!emailValido(email)) {
+      setMensagem(
+        "Informe um e-mail válido."
+      );
+      return;
+    }
+
     setProcessando(true);
     setMensagem("");
 
@@ -437,7 +500,7 @@ export function TelaLoginOnline({
         await supabase.auth
           .signInWithPassword({
             email:
-              email.trim(),
+              normalizarEmail(email),
             password: senha,
           });
 
@@ -457,9 +520,7 @@ export function TelaLoginOnline({
       onEntrar(usuario);
     } catch (erro) {
       setMensagem(
-        erro instanceof Error
-          ? erro.message
-          : "Não foi possível entrar."
+        mensagemErroAcesso(erro)
       );
     } finally {
       setProcessando(false);
@@ -818,7 +879,19 @@ export function Usuarios({
       !login.trim()
     ) {
       alert(
-        "Informe nome e usuário."
+        supabaseConfigurado
+          ? "Informe nome e e-mail."
+          : "Informe nome e usuário."
+      );
+      return;
+    }
+
+    if (
+      supabaseConfigurado &&
+      !emailValido(login)
+    ) {
+      alert(
+        "Informe um e-mail válido, por exemplo: secretaria@empresa.com.br."
       );
       return;
     }
@@ -835,17 +908,35 @@ export function Usuarios({
 
     if (existente) {
       alert(
-        "Este nome de usuário já existe."
+        supabaseConfigurado
+          ? "Este e-mail já possui um acesso cadastrado."
+          : "Este nome de usuário já existe."
+      );
+      return;
+    }
+
+    const senhaMinima =
+      supabaseConfigurado
+        ? SENHA_MINIMA_ONLINE
+        : 6;
+
+    if (
+      !editando &&
+      senha.length < senhaMinima
+    ) {
+      alert(
+        `A senha deve ter pelo menos ${senhaMinima} caracteres.`
       );
       return;
     }
 
     if (
-      !editando &&
-      senha.length < 6
+      editando &&
+      senha.length > 0 &&
+      senha.length < senhaMinima
     ) {
       alert(
-        "A senha deve ter pelo menos 6 caracteres."
+        `A nova senha deve ter pelo menos ${senhaMinima} caracteres.`
       );
       return;
     }
@@ -876,11 +967,11 @@ export function Usuarios({
                   ? null
                   : editando,
               nome: nome.trim(),
-              email: login
-                .trim()
-                .toLowerCase(),
+              email:
+                normalizarEmail(login),
               senha:
-                senha.length >= 6
+                senha.length >=
+                SENHA_MINIMA_ONLINE
                   ? senha
                   : null,
               perfil,
@@ -906,9 +997,7 @@ export function Usuarios({
         setProcessando(false);
         alert(
           `Não foi possível criar o acesso online: ${
-            erro instanceof Error
-              ? erro.message
-              : "Erro inesperado."
+            mensagemErroAcesso(erro)
           }`
         );
         return;
@@ -1110,7 +1199,11 @@ export function Usuarios({
             onChange={setNome}
           />
           <Campo
-            label="Usuário"
+            label={
+              supabaseConfigurado
+                ? "E-mail"
+                : "Usuário"
+            }
             value={login}
             onChange={setLogin}
           />
