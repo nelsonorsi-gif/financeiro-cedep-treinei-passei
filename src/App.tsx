@@ -19,6 +19,7 @@ import Secretaria, {
   type RecebimentoCaixa,
 } from "./Secretaria";
 import Documentos from "./Documentos";
+import Inicio from "./Inicio";
 import Nuvem from "./Nuvem";
 import Academico from "./Academico";
 import Presenca from "./Presenca";
@@ -1910,7 +1911,7 @@ function App() {
         item.saida > 0
     );
 
-  const menu = [
+  const modulosDoSistema = [
     "Dashboard",
 
     "Cadastros",
@@ -1948,9 +1949,14 @@ function App() {
     "Nuvem e Backup",
 
     "Usuários",
+  ];
+
+  const menu = [
+    ...(usuarioAtual && !podeAcessar(usuarioAtual, "Dashboard") ? ["Início"] : []),
+    ...modulosDoSistema,
   ].filter((item) =>
     usuarioAtual
-      ? podeAcessar(
+      ? item === "Início" || podeAcessar(
           usuarioAtual,
           item
         )
@@ -1979,8 +1985,19 @@ function App() {
       }
 
       setUsuarioAtual(usuario);
-      setPagina("Dashboard");
+      setPagina(podeAcessar(usuario, "Dashboard") ? "Dashboard" : "Início");
     };
+
+  useEffect(() => {
+    if (!usuarioAtual) return;
+    if (pagina === "Dashboard" && !podeAcessar(usuarioAtual, "Dashboard")) {
+      setPagina("Início");
+      return;
+    }
+    if (pagina !== "Início" && !podeAcessar(usuarioAtual, pagina)) {
+      setPagina(podeAcessar(usuarioAtual, "Dashboard") ? "Dashboard" : "Início");
+    }
+  }, [pagina, usuarioAtual]);
 
   /* =======================================================
      INTERFACE
@@ -2224,6 +2241,10 @@ function App() {
           estilos.conteudo
         }
       >
+        {pagina === "Início" && (
+          <Inicio usuario={usuarioAtual} modulos={modulosDoSistema} onAbrir={setPagina} />
+        )}
+
         {/* DASHBOARD */}
 
         {pagina ===
@@ -2740,7 +2761,7 @@ function App() {
 
         {pagina ===
           "Documentos" && (
-          <Documentos />
+          <Documentos usuarioAtual={usuarioAtual} />
         )}
 
         {pagina ===

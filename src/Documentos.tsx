@@ -17,10 +17,12 @@ import {
   type Conta,
 } from "./Contas";
 
+import { CHAVE_MENSALIDADES } from "./Mensalidades";
 import {
-  CHAVE_MENSALIDADES,
-  type Plano,
-} from "./Mensalidades";
+  recalcularParcelasFuturas,
+  resumirAlteracaoContrato,
+  type RegistroContrato,
+} from "./servicos/contratos";
 import type {
   Curso,
 } from "./CatalogoCursos";
@@ -639,13 +641,11 @@ function cabecalho(
   `;
 }
 
-function Documentos() {
+function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").UsuarioSessao }) {
   const [aba, setAba] =
     useState<Aba>("Contratos");
   const [alunos, setAlunos] =
     useState<Aluno[]>([]);
-  const [planos, setPlanos] =
-    useState<Plano[]>([]);
   const [cursos, setCursos] =
     useState<Curso[]>([]);
   const [contas, setContas] =
@@ -655,8 +655,8 @@ function Documentos() {
 
   const [alunoContrato, setAlunoContrato] =
     useState("");
-  const [planoContrato, setPlanoContrato] =
-    useState("");
+  const [buscaContrato, setBuscaContrato] = useState("");
+  const [versaoContratos, setVersaoContratos] = useState(0);
   const [inicioContrato, setInicioContrato] =
     useState("");
   const [
@@ -723,29 +723,11 @@ function Documentos() {
             localStorage.getItem(
               CHAVE_CONFIGURACOES_CONTRATOS
             ) || "{}"
-          ) as Record<
-            string,
-            {
-              planoContrato?: string;
-              inicioContrato?: string;
-              terminoContrato?: string;
-              diaVencimentoContrato?: string;
-              enderecoContrato?: string;
-              cidadeContrato?: string;
-              autorizacaoImagem?: string;
-              clausulas?: string;
-              duracaoContrato?: string;
-              anosContrato?: AnoContrato[];
-            }
-          >;
+          ) as Record<string, RegistroContrato>;
         const salva =
           salvas[alunoId];
 
         if (!salva) return;
-
-        setPlanoContrato(
-          salva.planoContrato || ""
-        );
         setInicioContrato(
           salva.inicioContrato || ""
         );
@@ -805,26 +787,38 @@ function Documentos() {
             localStorage.getItem(
               CHAVE_CONFIGURACOES_CONTRATOS
             ) || "{}"
-          ) as Record<
-            string,
-            unknown
-          >;
+          ) as Record<string, RegistroContrato>;
+        const anterior = salvas[alunoContrato];
+        const agora = new Date().toISOString();
+        const atual: RegistroContrato = {
+          inicioContrato, terminoContrato, diaVencimentoContrato,
+          enderecoContrato, cidadeContrato, autorizacaoImagem,
+          clausulas, duracaoContrato, anosContrato,
+        };
+        const resumo = resumirAlteracaoContrato(anterior, atual);
         salvas[alunoContrato] = {
-          planoContrato,
-          inicioContrato,
-          terminoContrato,
-          diaVencimentoContrato,
-          enderecoContrato,
-          cidadeContrato,
-          autorizacaoImagem,
-          clausulas,
-          duracaoContrato,
-          anosContrato,
+          ...atual,
+          criadoEm: anterior?.criadoEm || agora,
+          atualizadoEm: agora,
+          atualizadoPor: usuarioAtual.nome,
+          revisao: (anterior?.revisao || 0) + 1,
+          historico: [
+            ...(anterior?.historico || []),
+            {
+              data: agora,
+              responsavelId: usuarioAtual.id,
+              responsavelNome: usuarioAtual.nome,
+              resumo,
+              cursosAnteriores: anterior?.anosContrato?.map((ano) => ano.curso) || [],
+              cursosNovos: anosContrato.map((ano) => ano.curso),
+            },
+          ],
         };
         localStorage.setItem(
           CHAVE_CONFIGURACOES_CONTRATOS,
           JSON.stringify(salvas)
         );
+        setVersaoContratos((versao) => versao + 1);
         if (mostrarMensagem) {
           alert(
             "Configuração do contrato salva."
@@ -884,11 +878,6 @@ function Documentos() {
         setCursos(
           Array.isArray(dados.cursos)
             ? dados.cursos
-            : []
-        );
-        setPlanos(
-          Array.isArray(dados.planos)
-            ? dados.planos
             : []
         );
       }
@@ -960,6 +949,26 @@ function Documentos() {
     [alunos]
   );
 
+  const contratosSalvos = useMemo(() => {
+    void versaoContratos;
+    try {
+      const registros = JSON.parse(
+        localStorage.getItem(CHAVE_CONFIGURACOES_CONTRATOS) || "{}"
+      ) as Record<string, RegistroContrato>;
+      const termo = buscaContrato.trim().toLocaleLowerCase("pt-BR");
+      return Object.entries(registros)
+        .map(([alunoId, contrato]) => ({
+          alunoId,
+          contrato,
+          aluno: alunos.find((item) => item.id === alunoId),
+        }))
+        .filter((item) => item.aluno && (!termo || item.aluno.nome.toLocaleLowerCase("pt-BR").includes(termo)))
+        .sort((a, b) => (a.aluno?.nome || "").localeCompare(b.aluno?.nome || ""));
+    } catch {
+      return [];
+    }
+  }, [alunos, buscaContrato, versaoContratos]);
+
   const contasCarne = useMemo(() => {
     const aluno = alunos.find(
       (item) =>
@@ -972,6 +981,7 @@ function Documentos() {
       .filter(
         (item) =>
           item.tipo === "receber" &&
+          item.status !== "Cancelado" &&
           (item.observacao?.includes(
             `Aluno: ${aluno.nome}`
           ) ||
@@ -990,24 +1000,19 @@ function Documentos() {
     contas,
   ]);
 
-  const gerarContrato = () => {
+  const gerarContrato = (atualizarParcelas = true) => {
     const aluno = alunos.find(
       (item) =>
         item.id === alunoContrato
     );
-    const plano = planos.find(
-      (item) =>
-        item.id === planoContrato
-    );
 
     if (
       !aluno ||
-      !plano ||
       !inicioContrato ||
       !terminoContrato
     ) {
       alert(
-        "Selecione aluno, plano e informe as datas de início e término."
+        "Selecione o aluno e informe as datas de início e término."
       );
       return;
     }
@@ -1090,7 +1095,7 @@ function Documentos() {
                 ano.quantidadeParcelas,
             },
             (_, indice): Conta => ({
-              id: `contrato-${aluno.id}-${ano.anoLetivo}-${indice + 1}`,
+              id: `contrato-${aluno.id}-${Date.now()}-${ano.anoLetivo}-${indice + 1}`,
               descricao:
                 `${ano.curso} - ${aluno.nome} - ${indice + 1}/${ano.quantidadeParcelas}`,
               valor:
@@ -1104,9 +1109,7 @@ function Documentos() {
                 "Mensalidade",
               banco: "",
               unidade:
-                aluno.unidade ||
-                plano.unidade ||
-                "CEDEP",
+                aluno.unidade || "CEDEP",
               observacao:
                 `Aluno: ${aluno.nome} | Curso: ${ano.curso} | Ano letivo: ${ano.anoLetivo} | Contrato: ${aluno.id}`,
               status: "Pendente",
@@ -1122,49 +1125,28 @@ function Documentos() {
             })
           )
       );
-    const porId = new Map(
-      contas.map((item) => [
-        item.id,
-        item,
-      ])
-    );
-    novasParcelas.forEach(
-      (parcela) => {
-        const existente =
-          porId.get(parcela.id);
-        porId.set(
-          parcela.id,
-          existente &&
-            existente.status !==
-              "Pendente"
-            ? existente
-            : {
-                ...existente,
-                ...parcela,
-              }
-        );
-      }
-    );
-    const contasAtualizadas =
-      Array.from(porId.values());
-    localStorage.setItem(
-      CHAVE_CONTAS,
-      JSON.stringify(
-        contasAtualizadas
-      )
-    );
-    setContas(
-      contasAtualizadas
-    );
-    window.dispatchEvent(
-      new Event(
-        "financeiro-contas-atualizadas"
-      )
-    );
+    if (atualizarParcelas) {
+      const contratosAntes = JSON.parse(
+        localStorage.getItem(CHAVE_CONFIGURACOES_CONTRATOS) || "{}"
+      ) as Record<string, RegistroContrato>;
+      const contasAtualizadas = recalcularParcelasFuturas({
+        contas,
+        novasParcelas,
+        alunoId: aluno.id,
+        usuarioId: usuarioAtual.id,
+        hoje: new Date().toISOString().slice(0, 10),
+        ehAlteracao: Boolean(contratosAntes[aluno.id]),
+      });
+      localStorage.setItem(CHAVE_CONTAS, JSON.stringify(contasAtualizadas));
+      setContas(contasAtualizadas);
+      window.dispatchEvent(new Event("financeiro-contas-atualizadas"));
+      salvarConfiguracaoContrato(false);
+    }
 
-    salvarConfiguracaoContrato(
-      false
+    const registrosContratoAtual: Record<string, RegistroContrato> = JSON.parse(
+      localStorage.getItem(CHAVE_CONFIGURACOES_CONTRATOS) || "{}"
     );
+    const registroContratoAtual = registrosContratoAtual[aluno.id];
 
     abrirDocumento(
       `Contrato - ${aluno.nome}`,
@@ -1202,7 +1184,7 @@ function Documentos() {
 
         <h2>Quadro-resumo do serviço contratado</h2>
         <div class="box grid">
-          <div><strong>Plano:</strong> ${escapar(aluno.planoNome || plano.nome)}</div>
+          <div><strong>Condições contratadas:</strong> cursos e parcelamento descritos abaixo</div>
           <div><strong>Tipo de contrato:</strong> ${duracao} ano(s) letivo(s)</div>
           <div><strong>Início:</strong> ${escapar(formatarData(inicioContrato))}</div>
           <div><strong>Término previsto:</strong> ${escapar(formatarData(terminoContrato))}</div>
@@ -1229,9 +1211,18 @@ function Documentos() {
         </table>
         <p class="important">
           O valor acima corresponde ao <strong>curso completo</strong>. As parcelas representam
-          exclusivamente a forma de pagamento definida no plano escolhido e não mensalidades
+          exclusivamente a forma de pagamento definida nas condições contratadas e não mensalidades
           independentes ou pagamentos por mês de aula.
         </p>
+
+        ${registroContratoAtual?.historico && registroContratoAtual.historico.length > 1 ? `
+          <h2>Termo de alteração contratual</h2>
+          <p class="important">
+            A partir desta revisão, os serviços educacionais e as condições financeiras passam a seguir
+            a configuração descrita neste instrumento. Permanecem preservadas as obrigações anteriores,
+            as parcelas vencidas e todos os pagamentos já realizados.
+          </p>
+        ` : ""}
 
         <h2>Cláusula 1ª - Objeto e natureza do serviço</h2>
         <p>
@@ -1246,7 +1237,7 @@ function Documentos() {
         <p>
           As aulas poderão ser ministradas nas dependências da CONTRATADA ou em outro local
           previamente comunicado, de forma presencial ou por recurso tecnológico compatível
-          com o plano contratado. O aluno deverá respeitar horários, professores, colegas,
+          com o contrato. O aluno deverá respeitar horários, professores, colegas,
           instalações, normas de convivência e orientações acadêmicas. Faltas do aluno não
           geram abatimento, salvo reposição ou compensação expressamente oferecida pela CONTRATADA.
         </p>
@@ -1254,7 +1245,7 @@ function Documentos() {
         <h2>Cláusula 3ª - Preço total, parcelamento e desconto por pontualidade</h2>
         <p>
           O preço contratado refere-se à prestação do <strong>curso completo</strong>, sendo o
-          parcelamento mera facilidade de pagamento conforme o plano escolhido. As parcelas não
+          parcelamento mera facilidade de pagamento conforme as condições contratadas. As parcelas não
           caracterizam mensalidades autônomas nem remuneração isolada por cada mês de aula.
           Sobre o valor padrão de cada parcela será concedido desconto especial de
           <strong>${escapar(moeda(descontoPontualidade))}</strong> quando o pagamento ocorrer até
@@ -1286,8 +1277,7 @@ function Documentos() {
         <p class="important">
           O cancelamento somente poderá ser solicitado enquanto restarem pelo menos dois meses
           completos até a previsão de encerramento do curso. Faltando menos de dois meses para o
-          término, não será admitido o cancelamento, permanecendo devidas as parcelas do plano
-          contratado. Estas condições serão aplicadas com observância das normas de proteção do
+          término, não será admitido o cancelamento, permanecendo devidas as parcelas contratadas. Estas condições serão aplicadas com observância das normas de proteção do
           consumidor e poderão ser adequadas quando a legislação ou as circunstâncias concretas
           assim exigirem.
         </p>
@@ -1696,7 +1686,33 @@ function Documentos() {
       >
         {aba === "Contratos" && (
           <>
-            <h2>Gerar contrato</h2>
+            <h2>Contratos dos alunos</h2>
+            <CampoTexto label="Buscar aluno" value={buscaContrato} placeholder="Digite o nome do aluno" onChange={setBuscaContrato} />
+            <div style={{ display: "grid", gap: 12, margin: "16px 0 28px" }}>
+              {contratosSalvos.length === 0 ? (
+                <p style={estilos.textoCinza}>Nenhum contrato salvo encontrado.</p>
+              ) : contratosSalvos.map(({ alunoId, aluno, contrato }) => (
+                <article key={alunoId} style={{ border: "1px solid #dce3ed", borderRadius: 12, padding: 16, background: "#fff" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                    <div>
+                      <strong>{aluno!.nome}</strong>
+                      <div style={estilos.textoCinza}>{contrato.anosContrato?.map((ano) => `${ano.curso}: ${ano.parcelas}x de ${moeda(converterMoeda(ano.valorPadrao))}`).join(" • ") || "Condições financeiras não informadas"}</div>
+                      <small>Revisão {contrato.revisao || 1} • alterado por {contrato.atualizadoPor || "não informado"}{contrato.atualizadoEm ? ` em ${new Date(contrato.atualizadoEm).toLocaleString("pt-BR")}` : ""}</small>
+                    </div>
+                    <Botao onClick={() => carregarConfiguracaoContrato(alunoId)}>Abrir e editar</Botao>
+                  </div>
+                  {contrato.historico?.length ? (
+                    <details style={{ marginTop: 12 }}>
+                      <summary>Histórico de alterações ({contrato.historico.length})</summary>
+                      <ul>{[...contrato.historico].reverse().map((registro, indice) => (
+                        <li key={`${registro.data}-${indice}`}>{new Date(registro.data).toLocaleString("pt-BR")} — {registro.responsavelNome}: {registro.resumo}</li>
+                      ))}</ul>
+                    </details>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+            <h2>{alunoContrato ? "Editar contrato" : "Novo contrato"}</h2>
             <div
               style={
                 estilos.formGrid
@@ -1716,70 +1732,6 @@ function Documentos() {
                 onChange={
                   carregarConfiguracaoContrato
                 }
-              />
-              <CampoSelect
-                label="Plano"
-                value={
-                  planoContrato
-                }
-                opcoes={planos
-                  .filter(
-                    (item) =>
-                      item.situacao ===
-                      "Ativo"
-                  )
-                  .map((item) => ({
-                    valor: item.id,
-                    rotulo:
-                      `${item.nome} — ${item.parcelas}x ${moeda(item.valor)}`,
-                  }))}
-                onChange={(valor) => {
-                  setPlanoContrato(
-                    valor
-                  );
-                  const selecionado =
-                    planos.find(
-                      (item) =>
-                        item.id ===
-                        valor
-                    );
-                  if (selecionado) {
-                    setAnosContrato(
-                      (atuais) =>
-                        atuais.map(
-                          (
-                            ano,
-                            indice
-                          ) => ({
-                            ...ano,
-                            cursoId:
-                              selecionado.cursoId,
-                            curso:
-                              selecionado.curso,
-                            parcelas:
-                              String(
-                                selecionado.parcelas
-                              ),
-                            valorPadrao:
-                              selecionado.valor
-                                .toFixed(
-                                  2
-                                )
-                                .replace(
-                                  ".",
-                                  ","
-                                ),
-                            anoLetivo:
-                              ano.anoLetivo ||
-                              String(
-                                anoAtual +
-                                  indice
-                              ),
-                          })
-                        )
-                    );
-                  }
-                }}
               />
               <CampoSelect
                 label="Duração do contrato"
@@ -2146,25 +2098,11 @@ function Documentos() {
                 }
               />
             </label>
-            <div
-              style={
-                estilos.botoesContrato
-              }
-            >
-              <Botao
-                onClick={() =>
-                  salvarConfiguracaoContrato()
-                }
-              >
-                Salvar configuração
-              </Botao>
-              <Botao
-                onClick={
-                  gerarContrato
-                }
-              >
-                Gerar contrato e parcelas
-              </Botao>
+            <div style={estilos.botoesContrato}>
+              <Botao onClick={() => gerarContrato(true)}>Salvar contrato e recalcular parcelas</Botao>
+              {alunoContrato && (
+                <Botao onClick={() => gerarContrato(false)}>Abrir / imprimir sem alterar parcelas</Botao>
+              )}
             </div>
           </>
         )}
