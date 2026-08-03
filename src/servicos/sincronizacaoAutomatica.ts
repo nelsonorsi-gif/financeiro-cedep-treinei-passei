@@ -139,7 +139,7 @@ export async function prepararSincronizacaoInicial(
   ) as Conta[];
 
   if (
-    podeEditar &&
+    perfil === "Administrador" &&
     contasLocais.length > 0
   ) {
     await sincronizarContasLocais({
@@ -290,6 +290,7 @@ export function iniciarSincronizacaoAutomatica(
       serializar(contasAtuais);
 
     if (
+      perfil === "Administrador" &&
       contasAtuais &&
       contasSerializadas !==
         contasConhecidas
