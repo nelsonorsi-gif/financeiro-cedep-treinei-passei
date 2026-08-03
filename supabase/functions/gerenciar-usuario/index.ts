@@ -8,6 +8,13 @@ const cors = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const SENHA_MINIMA = 8;
+
+const emailValido = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    email
+  );
+
 const responder = (
   corpo: Record<string, unknown>,
   status = 200
@@ -240,12 +247,36 @@ Deno.serve(async (requisicao) => {
       !email ||
       !nome ||
       (!corpo.id &&
-        senha.length < 6)
+        senha.length < SENHA_MINIMA)
     ) {
       return responder(
         {
           erro:
-            "Nome, e-mail e senha válida são obrigatórios.",
+            `Nome, e-mail e senha com pelo menos ${SENHA_MINIMA} caracteres são obrigatórios.`,
+        },
+        400
+      );
+    }
+
+    if (!emailValido(email)) {
+      return responder(
+        {
+          erro:
+            "Informe um e-mail válido.",
+        },
+        400
+      );
+    }
+
+    if (
+      corpo.id &&
+      senha.length > 0 &&
+      senha.length < SENHA_MINIMA
+    ) {
+      return responder(
+        {
+          erro:
+            `A nova senha deve ter pelo menos ${SENHA_MINIMA} caracteres.`,
         },
         400
       );
@@ -300,7 +331,9 @@ Deno.serve(async (requisicao) => {
         },
       };
 
-      if (senha.length >= 6) {
+      if (
+        senha.length >= SENHA_MINIMA
+      ) {
         atributos.password =
           senha;
       }
