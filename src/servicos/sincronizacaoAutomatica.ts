@@ -125,36 +125,16 @@ const enviarRegistrosLocais =
 export async function prepararSincronizacaoInicial(
   usuarioId: string,
   podeEditar: boolean,
-  perfil: Perfil
+  _perfil: Perfil
 ) {
   const cliente =
     clienteObrigatorio();
   const marcador =
     `erp-sync-inicial-${usuarioId}`;
 
-  const contasLocais = (
-    lerValorLocal(
-      "financeiro-cedep-contas"
-    ) ?? []
-  ) as Conta[];
-
-  if (
-    perfil === "Administrador" &&
-    contasLocais.length > 0
-  ) {
-    await sincronizarContasLocais({
-      contas: contasLocais,
-      usuarioId,
-      perfil,
-    });
-  }
-
   const contasNuvem =
     await carregarContasEstruturadas();
-  if (
-    contasNuvem &&
-    contasNuvem.length > 0
-  ) {
+  if (contasNuvem) {
     salvarValorLocal(
       "financeiro-cedep-contas",
       contasNuvem
