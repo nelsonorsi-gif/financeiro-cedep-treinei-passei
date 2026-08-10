@@ -319,6 +319,7 @@ function App() {
     menuMobileAberto,
     setMenuMobileAberto,
   ] = useState(false);
+  const [quantidadeNotificacoes, setQuantidadeNotificacoes] = useState(0);
 
   useEffect(() => {
     const fecharComEscape = (
@@ -2079,7 +2080,7 @@ function App() {
   ];
 
   const menu = [
-    ...(usuarioAtual && !podeAcessar(usuarioAtual, "Dashboard") ? ["Início"] : []),
+    "Início",
     ...modulosDoSistema,
   ].filter((item) =>
     usuarioAtual
@@ -2112,7 +2113,7 @@ function App() {
       }
 
       setUsuarioAtual(usuario);
-      setPagina(podeAcessar(usuario, "Dashboard") ? "Dashboard" : "Início");
+      setPagina("Início");
     };
 
   useEffect(() => {
@@ -2122,7 +2123,7 @@ function App() {
       return;
     }
     if (pagina !== "Início" && !podeAcessar(usuarioAtual, pagina)) {
-      setPagina(podeAcessar(usuarioAtual, "Dashboard") ? "Dashboard" : "Início");
+      setPagina("Início");
     }
   }, [pagina, usuarioAtual]);
 
@@ -2320,7 +2321,9 @@ function App() {
                       : "transparent",
                 }}
               >
-                {item}
+                {item === "Início" && quantidadeNotificacoes > 0
+                  ? "🔔 Início (" + quantidadeNotificacoes + ")"
+                  : item}
               </button>
             )
           )}
@@ -2369,7 +2372,12 @@ function App() {
         }
       >
         {pagina === "Início" && (
-          <Inicio usuario={usuarioAtual} modulos={modulosDoSistema} onAbrir={setPagina} />
+          <Inicio
+            usuario={usuarioAtual}
+            modulos={modulosDoSistema}
+            onAbrir={setPagina}
+            onQuantidadeAlterada={setQuantidadeNotificacoes}
+          />
         )}
 
         {/* DASHBOARD */}
