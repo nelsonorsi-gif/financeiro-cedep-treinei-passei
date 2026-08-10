@@ -15,6 +15,7 @@ const descricoes: Record<string, string> = {
   "Secretaria e Caixa": "Atendimento e caixa da secretaria",
   Documentos: "Contratos, carn\u00eas e comprovantes",
   "Contas a Receber": "Parcelas e recebimentos",
+  "Despesas Pessoais": "Livro-caixa de despesas pessoais",
   "Relat\u00f3rios": "Consultas e relat\u00f3rios autorizados",
 };
 

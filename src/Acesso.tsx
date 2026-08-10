@@ -47,6 +47,7 @@ export const MODULOS_ERP = [
   "Contas a Receber",
   "Contas a Pagar",
   "Compromissos Mensais",
+  "Despesas Pessoais",
   "Bancos",
   "Importar Excel",
   "Relatórios",
