@@ -27,6 +27,7 @@ import GestaoFinanceira from "./GestaoFinanceira";
 import CompromissosMensais, {
   type PagamentoCompromisso,
 } from "./CompromissosMensais";
+import DespesasPessoais, { type DespesaPessoal } from "./DespesasPessoais";
 import {
   TelaLogin,
   TelaLoginOnline,
@@ -80,16 +81,8 @@ type Lancamento = {
   origem?: "manual" | "excel";
 };
 
-type DespesaPessoalResumo = {
-  id: string;
-  competencia: string;
-  valorPrevisto: number;
-  valorPago: number;
-  status: string;
-};
-
 const carregarDespesasPessoais =
-  (): DespesaPessoalResumo[] => {
+  (): DespesaPessoal[] => {
     try {
       return JSON.parse(
         localStorage.getItem(
@@ -425,7 +418,7 @@ function App() {
     despesasPessoais,
     setDespesasPessoais,
   ] =
-    useState<DespesaPessoalResumo[]>(
+    useState<DespesaPessoal[]>(
       carregarDespesasPessoais
     );
 
@@ -761,11 +754,10 @@ function App() {
     useMemo(() => {
       const valores = Array.from(
         new Set(
-          lancamentos
-            .map((item) =>
-              item.competencia.trim()
-            )
-            .filter(Boolean)
+          [
+            ...lancamentos.map((item) => item.competencia.trim()),
+            ...despesasPessoais.map((item) => item.competencia.trim()),
+          ].filter(Boolean)
         )
       );
 
@@ -784,7 +776,7 @@ function App() {
           );
         }
       );
-    }, [lancamentos]);
+    }, [lancamentos, despesasPessoais]);
 
   const lancamentosDashboard =
     useMemo(
@@ -1936,6 +1928,8 @@ function App() {
 
     "Compromissos Mensais",
 
+    "Despesas Pessoais",
+
     "Bancos",
 
     "Importar Excel",
@@ -2385,7 +2379,7 @@ function App() {
                   valoresDashboardOcultos
                     ? "••••••"
                     : moeda(
-                        saldoDashboard
+                        saldoRealDashboard
                       )
                 }
               />
@@ -2420,23 +2414,12 @@ function App() {
               />
 
               <Card
-                titulo="Despesas pessoais previstas"
+                titulo="Despesas pessoais"
                 valor={
                   valoresDashboardOcultos
                     ? "••••••"
                     : moeda(
                         despesasPessoaisDashboard
-                      )
-                }
-              />
-
-              <Card
-                titulo="Saldo real após pessoais"
-                valor={
-                  valoresDashboardOcultos
-                    ? "••••••"
-                    : moeda(
-                        saldoRealDashboard
                       )
                 }
               />
@@ -2503,7 +2486,7 @@ function App() {
                     valoresDashboardOcultos
                       ? "••••••"
                       : moeda(
-                          saldoDashboard
+                          saldoRealDashboard
                         )
                   }
                 />
@@ -3389,6 +3372,10 @@ function App() {
               setPagina("Contas a Pagar")
             }
           />
+        )}
+
+        {pagina === "Despesas Pessoais" && (
+          <DespesasPessoais />
         )}
 
         {pagina ===

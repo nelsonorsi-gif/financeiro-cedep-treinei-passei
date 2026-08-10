@@ -64,18 +64,17 @@ const vencimentoDoMes = (competencia: string, dia: number) => {
 };
 
 function atualizarEspelhoPessoal(ocorrencias: Ocorrencia[]) {
-  const pessoais = ocorrencias
-    .filter((item) => item.escopo === "Pessoal")
-    .map((item) => ({
-      id: item.id,
-      competencia: item.competencia.slice(0, 7).split("-").reverse().join("/"),
-      descricao: item.descricao,
-      valorPrevisto: Number(item.valor_previsto),
-      valorPago: Number(item.valor_pago),
-      status: item.status,
-      vencimento: item.vencimento,
-    }));
-  localStorage.setItem(CHAVE_PESSOAIS, JSON.stringify(pessoais));
+  let avulsas: unknown[] = [];
+  try {
+    const existentes = JSON.parse(localStorage.getItem(CHAVE_PESSOAIS) ?? "[]");
+    avulsas = Array.isArray(existentes) ? existentes.filter((item) => Boolean(item) && typeof item === "object" && "origem" in item && item.origem === "avulsa") : [];
+  } catch { avulsas = []; }
+  const recorrentes = ocorrencias.filter((item) => item.escopo === "Pessoal").map((item) => ({
+    id: item.id, competencia: item.competencia.slice(0,7).split("-").reverse().join("/"), descricao: item.descricao,
+    valorPrevisto: Number(item.valor_previsto), valorPago: Number(item.valor_pago), status: item.status,
+    vencimento: item.vencimento, categoria: item.categoria, formaPagamento: item.banco, observacao: item.observacao, origem: "recorrente" as const,
+  }));
+  localStorage.setItem(CHAVE_PESSOAIS, JSON.stringify([...avulsas, ...recorrentes]));
   window.dispatchEvent(new Event("financeiro-despesas-pessoais-atualizadas"));
 }
 
