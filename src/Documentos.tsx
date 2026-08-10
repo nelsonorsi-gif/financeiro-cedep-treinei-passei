@@ -23,6 +23,7 @@ import {
   resumirAlteracaoContrato,
   type RegistroContrato,
 } from "./servicos/contratos";
+import { sincronizarContasLocais } from "./servicos/contasEstruturadas";
 import type {
   Curso,
 } from "./CatalogoCursos";
@@ -657,6 +658,10 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
     useState("");
   const [buscaContrato, setBuscaContrato] = useState("");
   const [versaoContratos, setVersaoContratos] = useState(0);
+  const [formularioContratoVisivel, setFormularioContratoVisivel] = useState(false);
+  const [parcelasVencidas, setParcelasVencidas] = useState<"gerar" | "ignorar">("gerar");
+  const [mensagemContrato, setMensagemContrato] = useState("");
+  const [salvandoContrato, setSalvandoContrato] = useState(false);
   const [inicioContrato, setInicioContrato] =
     useState("");
   const [
@@ -716,6 +721,8 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
   const carregarConfiguracaoContrato =
     (alunoId: string) => {
       setAlunoContrato(alunoId);
+      setFormularioContratoVisivel(true);
+      setMensagemContrato("");
 
       try {
         const salvas =
@@ -963,7 +970,11 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
           aluno: alunos.find((item) => item.id === alunoId),
         }))
         .filter((item) => item.aluno && (!termo || item.aluno.nome.toLocaleLowerCase("pt-BR").includes(termo)))
-        .sort((a, b) => (a.aluno?.nome || "").localeCompare(b.aluno?.nome || ""));
+        .sort((a, b) =>
+          String(b.contrato.atualizadoEm || b.contrato.criadoEm || "").localeCompare(
+            String(a.contrato.atualizadoEm || a.contrato.criadoEm || "")
+          )
+        );
     } catch {
       return [];
     }
@@ -1000,7 +1011,7 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
     contas,
   ]);
 
-  const gerarContrato = (atualizarParcelas = true) => {
+  const gerarContrato = async (atualizarParcelas = true) => {
     const aluno = alunos.find(
       (item) =>
         item.id === alunoContrato
@@ -1120,6 +1131,11 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
               alunoNome:
                 aluno.nome,
               criadoEm: agora,
+              criadoPorId: usuarioAtual.id,
+              criadoPorNome: usuarioAtual.nome,
+              criadoPorPerfil: usuarioAtual.perfil,
+              atualizadoEm: agora,
+              atualizadoPorId: usuarioAtual.id,
               desconto:
                 descontoPontualidade,
             })
@@ -1136,11 +1152,30 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
         usuarioId: usuarioAtual.id,
         hoje: new Date().toISOString().slice(0, 10),
         ehAlteracao: Boolean(contratosAntes[aluno.id]),
+        incluirVencidas: parcelasVencidas === "gerar",
       });
-      localStorage.setItem(CHAVE_CONTAS, JSON.stringify(contasAtualizadas));
-      setContas(contasAtualizadas);
-      window.dispatchEvent(new Event("financeiro-contas-atualizadas"));
-      salvarConfiguracaoContrato(false);
+      setSalvandoContrato(true);
+      setMensagemContrato("");
+      try {
+        await sincronizarContasLocais({
+          contas: contasAtualizadas,
+          usuarioId: usuarioAtual.id,
+          perfil: usuarioAtual.perfil,
+        });
+        localStorage.setItem(CHAVE_CONTAS, JSON.stringify(contasAtualizadas));
+        setContas(contasAtualizadas);
+        window.dispatchEvent(new Event("financeiro-contas-atualizadas"));
+        if (!salvarConfiguracaoContrato(false)) throw new Error("Não foi possível salvar os dados do contrato.");
+        setMensagemContrato("Contrato e parcelas salvos no banco com sucesso.");
+      } catch (erro) {
+        const detalhe = erro instanceof Error ? erro.message : "Erro desconhecido.";
+        console.error("Erro ao salvar contrato e parcelas:", erro);
+        setMensagemContrato(`Não foi possível salvar as parcelas: ${detalhe}`);
+        alert(`Não foi possível salvar o contrato e as parcelas no banco.\n\n${detalhe}`);
+        setSalvandoContrato(false);
+        return;
+      }
+      setSalvandoContrato(false);
     }
 
     const registrosContratoAtual: Record<string, RegistroContrato> = JSON.parse(
@@ -1686,7 +1721,14 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
       >
         {aba === "Contratos" && (
           <>
-            <h2>Contratos dos alunos</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <h2>Contratos cadastrados</h2>
+              <Botao onClick={() => {
+                setAlunoContrato(""); setInicioContrato(""); setTerminoContrato(""); setClausulas("");
+                setDuracaoContrato("1"); setAnosContrato([criarAnoContrato(0)]); setParcelasVencidas("gerar");
+                setMensagemContrato(""); setFormularioContratoVisivel(true);
+              }}>Novo contrato</Botao>
+            </div>
             <CampoTexto label="Buscar aluno" value={buscaContrato} placeholder="Digite o nome do aluno" onChange={setBuscaContrato} />
             <div style={{ display: "grid", gap: 12, margin: "16px 0 28px" }}>
               {contratosSalvos.length === 0 ? (
@@ -1699,7 +1741,12 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
                       <div style={estilos.textoCinza}>{contrato.anosContrato?.map((ano) => `${ano.curso}: ${ano.parcelas}x de ${moeda(converterMoeda(ano.valorPadrao))}`).join(" • ") || "Condições financeiras não informadas"}</div>
                       <small>Revisão {contrato.revisao || 1} • alterado por {contrato.atualizadoPor || "não informado"}{contrato.atualizadoEm ? ` em ${new Date(contrato.atualizadoEm).toLocaleString("pt-BR")}` : ""}</small>
                     </div>
-                    <Botao onClick={() => carregarConfiguracaoContrato(alunoId)}>Abrir e editar</Botao>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <Botao onClick={() => carregarConfiguracaoContrato(alunoId)}>Abrir contrato</Botao>
+                      <Botao onClick={() => carregarConfiguracaoContrato(alunoId)}>Editar</Botao>
+                      <Botao onClick={() => { carregarConfiguracaoContrato(alunoId); window.setTimeout(() => document.querySelector<HTMLButtonElement>("#imprimir-contrato button")?.click(), 0); }}>Imprimir</Botao>
+                      <Botao onClick={() => { setAlunoCarne(alunoId); setAba("Carnês"); }}>Ver parcelas</Botao>
+                    </div>
                   </div>
                   {contrato.historico?.length ? (
                     <details style={{ marginTop: 12 }}>
@@ -1712,6 +1759,7 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
                 </article>
               ))}
             </div>
+            {formularioContratoVisivel ? <>
             <h2>{alunoContrato ? "Editar contrato" : "Novo contrato"}</h2>
             <div
               style={
@@ -2098,12 +2146,17 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
                 }
               />
             </label>
+            <CampoSelect label="Parcelas anteriores à data atual" value={parcelasVencidas} opcoes={[
+              { valor: "gerar", rotulo: "Gerar normalmente como vencidas" },
+              { valor: "ignorar", rotulo: "Não gerar parcelas já vencidas" },
+            ]} onChange={(valor) => setParcelasVencidas(valor as "gerar" | "ignorar")} />
+            {mensagemContrato ? <p role="status" style={{ color: mensagemContrato.startsWith("Não") ? "#b91c1c" : "#166534", fontWeight: 700 }}>{mensagemContrato}</p> : null}
             <div style={estilos.botoesContrato}>
-              <Botao onClick={() => gerarContrato(true)}>Salvar contrato e recalcular parcelas</Botao>
-              {alunoContrato && (
-                <Botao onClick={() => gerarContrato(false)}>Abrir / imprimir sem alterar parcelas</Botao>
-              )}
+              <Botao onClick={() => { if (!salvandoContrato) void gerarContrato(true); }}>{salvandoContrato ? "Salvando..." : "Salvar contrato e recalcular parcelas"}</Botao>
+              {alunoContrato && <span id="imprimir-contrato"><Botao onClick={() => { void gerarContrato(false); }}>Abrir / imprimir sem alterar parcelas</Botao></span>}
+              <Botao onClick={() => setFormularioContratoVisivel(false)}>Fechar formulário</Botao>
             </div>
+            </> : null}
           </>
         )}
 
