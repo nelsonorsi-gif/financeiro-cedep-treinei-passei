@@ -64,6 +64,7 @@ export const recalcularParcelasFuturas = ({
   usuarioId,
   hoje,
   ehAlteracao,
+  incluirVencidas = true,
 }: {
   contas: Conta[];
   novasParcelas: Conta[];
@@ -71,10 +72,15 @@ export const recalcularParcelasFuturas = ({
   usuarioId: string;
   hoje: string;
   ehAlteracao: boolean;
+  incluirVencidas?: boolean;
 }) => {
+  const parcelasIncluidas = novasParcelas.filter(
+    (conta) => incluirVencidas || conta.vencimento >= hoje
+  );
+
   if (!ehAlteracao) {
-    const ids = new Set(novasParcelas.map((conta) => conta.id));
-    return [...contas.filter((conta) => !ids.has(conta.id)), ...novasParcelas];
+    const ids = new Set(parcelasIncluidas.map((conta) => conta.id));
+    return [...contas.filter((conta) => !ids.has(conta.id)), ...parcelasIncluidas];
   }
 
   const agora = new Date().toISOString();
@@ -94,6 +100,6 @@ export const recalcularParcelasFuturas = ({
 
   return [
     ...preservadas,
-    ...novasParcelas.filter((conta) => conta.vencimento >= hoje),
+    ...parcelasIncluidas,
   ];
 };
