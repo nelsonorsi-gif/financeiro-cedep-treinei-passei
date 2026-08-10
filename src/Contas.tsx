@@ -964,7 +964,9 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
                                 Estornar
                               </button>
                             )}                            <button onClick={() => editarConta(conta)} style={estilos.botaoEditar}>Editar</button>
-                            <button onClick={() => void excluirConta(conta)} style={estilos.botaoExcluir}>Excluir</button>
+                            {(conta.valorPago ?? 0) <= 0 && (
+                              <button onClick={() => void excluirConta(conta)} style={estilos.botaoExcluir}>Excluir</button>
+                            )}
                           </div>
                         </td>
                       </tr>

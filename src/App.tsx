@@ -4718,7 +4718,7 @@ function Tabela({
                         >
                           Estornar
                         </button>
-                      )}                      {excluirLancamento && (
+                      )}                      {excluirLancamento && !estornarLancamento && (
                         <button
                           onClick={() =>
                             excluirLancamento(
