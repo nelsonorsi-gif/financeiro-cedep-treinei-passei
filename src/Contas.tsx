@@ -176,6 +176,8 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
   const [banco, setBanco] = useState("");
   const [unidade, setUnidade] = useState("CEDEP");
   const [observacao, setObservacao] = useState("");
+  const [formaPagamentoConta, setFormaPagamentoConta] = useState("PIX");
+  const [parcelasCartaoConta, setParcelasCartaoConta] = useState(2);
   const [contaEditando, setContaEditando] = useState<string | null>(null);
 
   const [busca, setBusca] = useState("");
@@ -275,6 +277,8 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
     setBanco("");
     setUnidade("CEDEP");
     setObservacao("");
+    setFormaPagamentoConta("PIX");
+    setParcelasCartaoConta(2);
     setContaEditando(null);
   };
 
@@ -325,6 +329,8 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
       multa: existente?.multa ?? 0,
       desconto:
         existente?.desconto ?? 0,
+      formaPagamentoBaixa: formaPagamentoConta,
+      parcelasCartao: formaPagamentoConta === "Cartão parcelado" ? parcelasCartaoConta : 1,
     };
 
     try {
@@ -367,6 +373,8 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
     setBanco(conta.banco);
     setUnidade(conta.unidade);
     setObservacao(conta.observacao);
+    setFormaPagamentoConta(conta.formaPagamentoBaixa || "PIX");
+    setParcelasCartaoConta(Math.max(2, conta.parcelasCartao ?? 2));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -418,8 +426,8 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
     setBancoPagamento(
       conta.banco
     );
-    setFormaPagamento("PIX");
-    setParcelasCartao(2);
+    setFormaPagamento(conta.formaPagamentoBaixa || "PIX");
+    setParcelasCartao(Math.max(2, conta.parcelasCartao ?? 2));
     setObservacaoBaixa("");
   };
 
@@ -816,6 +824,25 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
           <CampoTexto label="Vencimento" value={vencimento} onChange={setVencimento} type="date" />
           <CampoSelect label={tipo === "receber" ? "Tipo de Entrada" : "Tipo de Saída"} value={categoria} opcoes={categoriasFormulario} onChange={setCategoria} />
           <CampoSelect label="Banco / Conta" value={banco} opcoes={configuracoes.bancos} onChange={setBanco} />
+          <CampoSelect
+            label={tipo === "receber" ? "Forma prevista de recebimento" : "Forma prevista de pagamento"}
+            value={formaPagamentoConta}
+            opcoes={["PIX", "Dinheiro", "Cartão de crédito à vista", "Cartão de débito", "Cartão parcelado", "Boleto", "Transferência", "Outro"]}
+            onChange={(opcao) => {
+              setFormaPagamentoConta(opcao);
+              if (opcao !== "Cartão parcelado") setParcelasCartaoConta(2);
+            }}
+          />
+          {formaPagamentoConta === "Cartão parcelado" && (
+            <CampoSelect
+              label="Quantidade de parcelas"
+              value={String(parcelasCartaoConta)}
+              opcoes={Array.from({ length: 11 }, (_, indice) => String(indice + 2))}
+              rotulos={Array.from({ length: 11 }, (_, indice) => String(indice + 2) + "x")}
+              onChange={(quantidade) => setParcelasCartaoConta(Number(quantidade))}
+              semOpcaoVazia
+            />
+          )}
           <CampoSelect label="Unidade" value={unidade} opcoes={configuracoes.unidades} onChange={setUnidade} />
           <CampoTexto label="Observação" value={observacao} onChange={setObservacao} placeholder="Opcional" />
         </div>
