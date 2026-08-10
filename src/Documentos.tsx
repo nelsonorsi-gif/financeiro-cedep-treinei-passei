@@ -1720,7 +1720,8 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
         }
       >
         {aba === "Contratos" && (
-          <>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ order: 2 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <h2>Contratos cadastrados</h2>
               <Botao onClick={() => {
@@ -1759,7 +1760,8 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
                 </article>
               ))}
             </div>
-            {formularioContratoVisivel ? <>
+            </div>
+            {formularioContratoVisivel ? <div style={{ order: 1, marginBottom: 28 }}>
             <h2>{alunoContrato ? "Editar contrato" : "Novo contrato"}</h2>
             <div
               style={
@@ -2156,8 +2158,8 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
               {alunoContrato && <span id="imprimir-contrato"><Botao onClick={() => { void gerarContrato(false); }}>Abrir / imprimir sem alterar parcelas</Botao></span>}
               <Botao onClick={() => setFormularioContratoVisivel(false)}>Fechar formulário</Botao>
             </div>
-            </> : null}
-          </>
+            </div> : null}
+          </div>
         )}
 
         {aba === "Carnês" && (
