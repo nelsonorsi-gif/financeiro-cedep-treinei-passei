@@ -204,7 +204,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
     formaPagamento,
     setFormaPagamento,
   ] = useState("PIX");
-  const [parcelasCartao, setParcelasCartao] = useState(1);
+  const [parcelasCartao, setParcelasCartao] = useState(2);
   const [
     bancoPagamento,
     setBancoPagamento,
@@ -280,7 +280,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
 
   const salvarConta = async () => {
     const valorNumerico = converterNumero(valor);
-    if (!descricao.trim()) return alert("Digite uma descri��o.");
+    if (!descricao.trim()) return alert("Digite uma descrição.");
     if (valorNumerico <= 0) return alert("Digite um valor válido.");
     if (!vencimento) return alert("Informe a data de vencimento.");
     if (!categoria) {
@@ -351,7 +351,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
     } catch (erro) {
       console.error(erro);
       alert(
-        "N�o foi possível salvar a conta na nuvem."
+        "Não foi possível salvar a conta na nuvem."
       );
     } finally {
       setProcessando(false);
@@ -384,7 +384,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
     } catch (erro) {
       console.error(erro);
       alert(
-        "N�o foi possível excluir esta conta."
+        "Não foi possível excluir esta conta."
       );
     }
   };
@@ -419,7 +419,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
       conta.banco
     );
     setFormaPagamento("PIX");
-    setParcelasCartao(1);
+    setParcelasCartao(2);
     setObservacaoBaixa("");
   };
 
@@ -544,7 +544,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
     } catch (erro) {
       console.error(erro);
       alert(
-        "N�o foi possível registrar a baixa."
+        "Não foi possível registrar a baixa."
       );
     } finally {
       setProcessando(false);
@@ -702,10 +702,10 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
   };
 
   const exportarExcel = () => {
-    if (!contasFiltradas.length) return alert("N�o há contas para exportar.");
+    if (!contasFiltradas.length) return alert("Não há contas para exportar.");
     const dados = contasFiltradas.map((conta) => ({
       Vencimento: formatarData(conta.vencimento),
-      "Descri��o": conta.descricao,
+      "Descrição": conta.descricao,
       Aluno: conta.alunoNome ?? "",
       [tipo === "receber" ? "Tipo de entrada" : "Tipo de saída"]:
         conta.categoria,
@@ -713,7 +713,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
       Unidade: conta.unidade,
       Valor: conta.valor,
       Status: contaVencida(conta) ? "Vencido" : conta.status,
-      "Observa��o": conta.observacao,
+      "Observação": conta.observacao,
       "Criado por": conta.criadoPorNome ?? "",
     }));
     const planilha = XLSX.utils.json_to_sheet(dados);
@@ -775,7 +775,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
       alert("Estorno registrado. O lançamento original foi preservado no histórico financeiro.");
     } catch (erro) {
       console.error(erro);
-      alert("N�o foi possível registrar o estorno.");
+      alert("Não foi possível registrar o estorno.");
     }
   };
   const titulo = tipo === "receber" ? "Contas a Receber" : "Contas a Pagar";
@@ -791,7 +791,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
 
       {usuarioAtual.perfil === "Secretaria" && (
         <div style={estilos.avisoPermissao}>
-          <strong>Vis�o da Secretaria:</strong> você visualiza mensalidades de
+          <strong>Visão da Secretaria:</strong> você visualiza mensalidades de
           alunos e contas cadastradas pelo seu próprio usuário. As demais contas
           administrativas permanecem restritas.
         </div>
@@ -807,13 +807,13 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
       <section style={estilos.caixa}>
         <h2>{contaEditando ? "Editar conta" : `Nova conta a ${tipo}`}</h2>
         <div style={estilos.formGrid}>
-          <CampoTexto label="Descri��o" value={descricao} onChange={setDescricao} placeholder={tipo === "receber" ? "Ex.: Mensalidade Jo�o" : "Ex.: Energia elétrica"} />
+          <CampoTexto label="Descrição" value={descricao} onChange={setDescricao} placeholder={tipo === "receber" ? "Ex.: Mensalidade João" : "Ex.: Energia elétrica"} />
           <CampoTexto label="Valor" value={valor} onChange={setValor} placeholder="Ex.: 500,00" />
           <CampoTexto label="Vencimento" value={vencimento} onChange={setVencimento} type="date" />
           <CampoSelect label={tipo === "receber" ? "Tipo de Entrada" : "Tipo de Saída"} value={categoria} opcoes={categoriasFormulario} onChange={setCategoria} />
           <CampoSelect label="Banco / Conta" value={banco} opcoes={configuracoes.bancos} onChange={setBanco} />
           <CampoSelect label="Unidade" value={unidade} opcoes={configuracoes.unidades} onChange={setUnidade} />
-          <CampoTexto label="Observa��o" value={observacao} onChange={setObservacao} placeholder="Opcional" />
+          <CampoTexto label="Observação" value={observacao} onChange={setObservacao} placeholder="Opcional" />
         </div>
         <div style={estilos.botoes}>
           <button onClick={() => void salvarConta()} disabled={processando} style={estilos.botaoPrincipal}>
@@ -821,7 +821,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
           </button>
           {contaEditando && (
             <button onClick={limparFormulario} style={estilos.botaoSecundario}>
-              Cancelar edi��o
+              Cancelar edição
             </button>
           )}
         </div>
@@ -848,14 +848,14 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
         </div>
 
         <div style={estilos.filtros}>
-          <CampoTexto label="Buscar aluno ou descri��o" value={busca} onChange={setBusca} placeholder="Nome do aluno, conta ou observa��o..." />
-          <CampoSelect label="Situa��o" value={situacao} opcoes={["Todos", "Pendentes", "Vencidos", "Vencem hoje", "A vencer", "Concluídos"]} onChange={(valor) => setSituacao(valor as SituacaoFiltro)} semOpcaoVazia />
+          <CampoTexto label="Buscar aluno ou descrição" value={busca} onChange={setBusca} placeholder="Nome do aluno, conta ou observação..." />
+          <CampoSelect label="Situação" value={situacao} opcoes={["Todos", "Pendentes", "Vencidos", "Vencem hoje", "A vencer", "Concluídos"]} onChange={(valor) => setSituacao(valor as SituacaoFiltro)} semOpcaoVazia />
           <CampoSelect label={tipo === "receber" ? "Tipo de entrada" : "Tipo de saída"} value={filtroCategoria} opcoes={["Todas", ...categoriasFormulario, ...listas.categorias.filter((item) => !categoriasFormulario.includes(item))]} onChange={setFiltroCategoria} semOpcaoVazia />
           <CampoSelect label="Banco / Conta" value={filtroBanco} opcoes={["Todos", ...listas.bancos]} onChange={setFiltroBanco} semOpcaoVazia />
           <CampoSelect label="Unidade" value={filtroUnidade} opcoes={["Todas", ...listas.unidades]} onChange={setFiltroUnidade} semOpcaoVazia />
           <CampoTexto label="Vencimento inicial" value={dataInicial} onChange={setDataInicial} type="date" />
           <CampoTexto label="Vencimento final" value={dataFinal} onChange={setDataFinal} type="date" />
-          <CampoSelect label="Ordenar por" value={ordenacao} opcoes={["vencimento-asc", "vencimento-desc", "valor-desc", "valor-asc", "descricao"]} rotulos={["Vencimento mais próximo", "Vencimento mais distante", "Maior valor", "Menor valor", "Descri��o A–Z"]} onChange={(valor) => setOrdenacao(valor as Ordenacao)} semOpcaoVazia />
+          <CampoSelect label="Ordenar por" value={ordenacao} opcoes={["vencimento-asc", "vencimento-desc", "valor-desc", "valor-asc", "descricao"]} rotulos={["Vencimento mais próximo", "Vencimento mais distante", "Maior valor", "Menor valor", "Descrição A–Z"]} onChange={(valor) => setOrdenacao(valor as Ordenacao)} semOpcaoVazia />
         </div>
 
         {tipo === "receber" && (
@@ -883,7 +883,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
                 <thead>
                   <tr>
                     <th style={estilos.th}>Vencimento</th>
-                    <th style={estilos.th}>Descri��o / aluno</th>
+                    <th style={estilos.th}>Descrição / aluno</th>
                     <th style={estilos.th}>{tipo === "receber" ? "Tipo de entrada" : "Tipo de saída"}</th>
                     <th style={estilos.th}>Banco</th>
                     <th style={estilos.th}>Unidade</th>
@@ -1056,8 +1056,9 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
                 opcoes={[
                   "PIX",
                   "Dinheiro",
-                  "Cart�o de débito",
-                  "Cart�o de crédito",
+                  "Cartão de crédito à vista",
+                  "Cartão de débito",
+                  "Cartão parcelado",
                   "Boleto",
                   "Transferência",
                   "Outro",
@@ -1066,18 +1067,19 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
                   setFormaPagamento
                 }
               />
-              {formaPagamento === "Cart�o de crédito" && (
+              {formaPagamento === "Cartão parcelado" && (
                 <CampoSelect
-                  label="Parcelamento do cart�o"
+                  label="Quantidade de parcelas"
                   value={String(parcelasCartao)}
-                  opcoes={Array.from({ length: 12 }, (_, indice) => String(indice + 1))}
-                  rotulos={Array.from({ length: 12 }, (_, indice) => String(indice + 1) + "x")}
+                  opcoes={Array.from({ length: 11 }, (_, indice) => String(indice + 2))}
+                  rotulos={Array.from({ length: 11 }, (_, indice) => String(indice + 2) + "x")}
                   onChange={(valor) => setParcelasCartao(Number(valor))}
                   semOpcaoVazia
                 />
               )}
-              {(formaPagamento === "Cart�o de crédito" ||
-                formaPagamento === "Cart�o de débito") && (
+              {(formaPagamento === "Cartão de crédito à vista" ||
+                formaPagamento === "Cartão de débito" ||
+                formaPagamento === "Cartão parcelado") && (
                 <div style={estilos.avisoPermissao}>
                   {(() => {
                     const calculo = calcularTaxaCartao(
@@ -1089,7 +1091,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
                   })()}
                 </div>
               )}              <CampoTexto
-                label="Observa��o da baixa"
+                label="Observação da baixa"
                 value={observacaoBaixa}
                 onChange={
                   setObservacaoBaixa

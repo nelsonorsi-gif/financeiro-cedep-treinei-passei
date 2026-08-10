@@ -114,7 +114,7 @@ function Secretaria({
     useState("");
   const [formaPagamento, setFormaPagamento] =
     useState("");
-  const [parcelasCartao, setParcelasCartao] = useState(1);
+  const [parcelasCartao, setParcelasCartao] = useState(2);
 
   const [valorFechamento, setValorFechamento] =
     useState("");
@@ -316,7 +316,7 @@ function Secretaria({
       !formaPagamento
     ) {
       alert(
-        "Preencha aluno, descri��o, valor e forma de pagamento."
+        "Preencha aluno, descrição, valor e forma de pagamento."
       );
       return;
     }
@@ -369,7 +369,7 @@ function Secretaria({
     setAlunoId("");
     setDescricao("Mensalidade");
     setValor("");
-    setParcelasCartao(1);
+    setParcelasCartao(2);
     alert(
       "Recebimento registrado no caixa e no financeiro."
     );
@@ -562,7 +562,7 @@ function Secretaria({
                   onChange={setAlunoId}
                 />
                 <Campo
-                  label="Descri��o"
+                  label="Descrição"
                   value={descricao}
                   onChange={
                     setDescricao
@@ -578,21 +578,21 @@ function Secretaria({
                   value={
                     formaPagamento
                   }
-                  opcoes={Array.from(new Set(["Dinheiro", "PIX", "Cart�o de débito", "Cart�o de crédito", "Transferência", ...configuracoes.bancos]))}
+                  opcoes={Array.from(new Set(["Dinheiro", "PIX", "Cartão de crédito à vista", "Cartão de débito", "Cartão parcelado", "Transferência", ...configuracoes.bancos]))}
                   onChange={
                     setFormaPagamento
                   }
                 />
               </div>
-                {formaPagamento === "Cart�o de crédito" && (
+                {formaPagamento === "Cartão parcelado" && (
                   <CampoSelect
-                    label="Parcelamento"
+                    label="Quantidade de parcelas"
                     value={String(parcelasCartao)}
-                    opcoes={Array.from({ length: 12 }, (_, indice) => String(indice + 1))}
+                    opcoes={Array.from({ length: 11 }, (_, indice) => String(indice + 2))}
                     onChange={(quantidade) => setParcelasCartao(Number(quantidade))}
                   />
                 )}
-                {(formaPagamento === "Cart�o de débito" || formaPagamento === "Cart�o de crédito") && (
+                {(formaPagamento === "Cartão de crédito à vista" || formaPagamento === "Cartão de débito" || formaPagamento === "Cartão parcelado") && (
                   <div style={estilos.textoCinza}>
                     {(() => {
                       const calculo = calcularTaxaCartao(converterNumero(valor), formaPagamento, parcelasCartao);
@@ -628,7 +628,7 @@ function Secretaria({
                 }
               />
               <Campo
-                label="Observa��o"
+                label="Observação"
                 value={
                   observacaoFechamento
                 }
@@ -717,7 +717,7 @@ function Secretaria({
                   <div style={estilos.registro}><span>Saídas</span><strong>{moeda(totaisMovimento.saidas)}</strong></div>
                   <div style={estilos.registro}><span>Estornos de entradas</span><strong>{moeda(totaisMovimento.estornosEntradas)}</strong></div>
                   <div style={estilos.registro}><span>Estornos de saídas</span><strong>{moeda(totaisMovimento.estornosSaidas)}</strong></div>
-                  <div style={estilos.registro}><span>Taxas de cart�o</span><strong>{moeda((caixaAberto?.movimentos ?? []).reduce((total, movimento) => total + (movimento.taxaCartao ?? 0), 0))}</strong></div>
+                  <div style={estilos.registro}><span>Taxas de cartão</span><strong>{moeda((caixaAberto?.movimentos ?? []).reduce((total, movimento) => total + (movimento.taxaCartao ?? 0), 0))}</strong></div>
                   <div style={estilos.registro}><span>Cartões líquido previsto</span><strong>{moeda((caixaAberto?.movimentos ?? []).reduce((total, movimento) => total + (movimento.valorLiquido ?? 0), 0))}</strong></div>
                 </>
               )}

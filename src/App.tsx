@@ -46,6 +46,7 @@ import {
   prepararSincronizacaoInicial,
 } from "./servicos/sincronizacaoAutomatica";
 import { mensagemCaixaFechado, registrarMovimentoCaixa, usuarioPodeMovimentar } from "./servicos/caixaOperacional";
+import { calcularTaxaCartao } from "./servicos/taxasCartao";
 
 import Configuracoes, {
   carregarConfiguracoes,
@@ -89,6 +90,7 @@ type Lancamento = {
   estornadoEm?: string;
   taxaCartao?: number;
   valorLiquidoCartao?: number;
+  parcelasCartao?: number;
 };
 
 const carregarDespesasPessoais =
@@ -122,6 +124,8 @@ type FormularioLancamento = {
   tipoSaida: string;
 
   formaPagamento: string;
+
+  parcelasCartao: number;
 
   unidade: string;
 };
@@ -273,7 +277,7 @@ const detectarMesAnoArquivo = (
 };
 
 /* =========================================================
-   FORMULÁRIO PADR�O
+   FORMULÁRIO PADRÃO
 ========================================================= */
 
 const criarFormularioVazio =
@@ -289,6 +293,8 @@ const criarFormularioVazio =
     tipoSaida: "",
 
     formaPagamento: "",
+
+    parcelasCartao: 2,
 
     unidade: "CEDEP",
   });
@@ -543,7 +549,7 @@ function App() {
     );
 
   /* =======================================================
-     ATUALIZAR LISTAS DE CONFIGURA��O
+     ATUALIZAR LISTAS DE CONFIGURAÇÃO
   ======================================================= */
 
   useEffect(() => {
@@ -590,14 +596,14 @@ function App() {
           ) as Lancamento[];
 
         /*
-          MIGRA��O AUTOMÁTICA
+          MIGRAÇÃO AUTOMÁTICA
 
           Os lançamentos antigos,
           sem data e competência,
-          s�o considerados Junho/2026.
+          são considerados Junho/2026.
 
           Os lançamentos que já têm
-          data n�o s�o alterados.
+          data não são alterados.
         */
 
         const dadosCorrigidos =
@@ -961,7 +967,7 @@ function App() {
             lancamento
               .formaPagamento
               .trim() ||
-            "N�o informado";
+            "Não informado";
 
           const chave =
             nome.toUpperCase();
@@ -1022,7 +1028,7 @@ function App() {
         (item) =>
           (
             item.formaPagamento.trim() ||
-            "N�o informado"
+            "Não informado"
           ).toUpperCase() ===
           bancoSelecionado.toUpperCase()
       );
@@ -1032,7 +1038,7 @@ function App() {
     ]);
 
   /* =======================================================
-     IMPORTA��O EXCEL
+     IMPORTAÇÃO EXCEL
   ======================================================= */
 
   const importarExcel = (
@@ -1058,7 +1064,7 @@ function App() {
       !periodoArquivo.ano
     ) {
       setMensagem(
-        "N�o consegui identificar o mês e o ano pelo nome do arquivo. Use um nome como JULHO 2026.xlsx."
+        "Não consegui identificar o mês e o ano pelo nome do arquivo. Use um nome como JULHO 2026.xlsx."
       );
 
       return;
@@ -1073,7 +1079,7 @@ function App() {
 
     if (jaImportado) {
       setMensagem(
-        "Este arquivo já foi importado anteriormente. A importa��o foi bloqueada para evitar duplicidade."
+        "Este arquivo já foi importado anteriormente. A importação foi bloqueada para evitar duplicidade."
       );
 
       return;
@@ -1092,7 +1098,7 @@ function App() {
 
         if (!conteudo) {
           setMensagem(
-            "N�o foi possível abrir o arquivo."
+            "Não foi possível abrir o arquivo."
           );
 
           return;
@@ -1252,7 +1258,7 @@ function App() {
         }
 
         setMensagem(
-          `${novosLancamentos.length} lançamentos encontrados para ${periodoArquivo.mes}/${periodoArquivo.ano}. Confira os valores e confirme a importa��o.`
+          `${novosLancamentos.length} lançamentos encontrados para ${periodoArquivo.mes}/${periodoArquivo.ano}. Confira os valores e confirme a importação.`
         );
       } catch (erro) {
         console.error(
@@ -1268,7 +1274,7 @@ function App() {
 
     leitor.onerror = () => {
       setMensagem(
-        "N�o foi possível abrir o arquivo selecionado."
+        "Não foi possível abrir o arquivo selecionado."
       );
     };
 
@@ -1312,7 +1318,7 @@ function App() {
       );
 
       setMensagem(
-        "Importa��o confirmada e salva com sucesso."
+        "Importação confirmada e salva com sucesso."
       );
 
       setPreVisualizacao(
@@ -1364,7 +1370,7 @@ function App() {
 
       if (!descricao) {
         alert(
-          "Digite uma descri��o."
+          "Digite uma descrição."
         );
 
         return;
@@ -1425,6 +1431,12 @@ function App() {
         return;
       }
 
+      const cartao = calcularTaxaCartao(
+        valor,
+        formulario.formaPagamento,
+        formulario.parcelasCartao
+      );
+
       const identificacaoCaixa = registrarMovimentoCaixa(usuarioAtual, {
         natureza: tipo === "Entrada" ? "entrada" : "saida",
         origem: tipo === "Entrada" ? "receita" : "despesa",
@@ -1432,6 +1444,10 @@ function App() {
         descricao,
         valor,
         formaPagamento: formulario.formaPagamento,
+        modalidadeCartao: cartao.modalidade ?? undefined,
+        parcelasCartao: cartao.parcelas,
+        taxaCartao: cartao.taxa,
+        valorLiquido: cartao.liquido,
       });
 
       const novoLancamento: Lancamento =
@@ -1491,6 +1507,9 @@ function App() {
           usuarioResponsavelNome: usuarioAtual.nome,
           caixaId: "caixaId" in identificacaoCaixa ? identificacaoCaixa.caixaId : undefined,
           operacaoAdministrativa: usuarioAtual.perfil === "Administrador",
+          parcelasCartao: cartao.parcelas,
+          taxaCartao: cartao.taxa,
+          valorLiquidoCartao: cartao.liquido,
         };
 
       if (
@@ -1516,6 +1535,47 @@ function App() {
         );
       }
 
+
+      if (tipo === "Entrada") {
+        const taxaId = "taxa-cartao-" + novoLancamento.id;
+        setLancamentos((atuais) => {
+          const semTaxaAnterior = atuais.filter((item) => item.id !== taxaId);
+          if (cartao.taxa <= 0) return semTaxaAnterior;
+          const despesaTaxa: Lancamento = {
+            id: taxaId,
+            dia: novoLancamento.dia,
+            data: novoLancamento.data,
+            competencia: novoLancamento.competencia,
+            descricao: "Taxa de cartão - " + descricao,
+            tipoEntrada: "",
+            tipoSaida: "Taxas de cartão",
+            formaPagamento: formulario.formaPagamento,
+            entrada: 0,
+            saida: cartao.taxa,
+            unidade: formulario.unidade,
+            origem: "manual",
+            usuarioResponsavelId: usuarioAtual.id,
+            usuarioResponsavelNome: usuarioAtual.nome,
+            caixaId: "caixaId" in identificacaoCaixa ? identificacaoCaixa.caixaId : undefined,
+            operacaoAdministrativa: usuarioAtual.perfil === "Administrador",
+            parcelasCartao: cartao.parcelas,
+          };
+          return [...semTaxaAnterior, despesaTaxa];
+        });
+
+        if (cartao.taxa > 0) {
+          registrarMovimentoCaixa(usuarioAtual, {
+            natureza: "saida",
+            origem: "taxa_cartao",
+            origemId: taxaId,
+            descricao: "Taxa de cartão - " + descricao,
+            valor: cartao.taxa,
+            formaPagamento: formulario.formaPagamento,
+            modalidadeCartao: cartao.modalidade ?? undefined,
+            parcelasCartao: cartao.parcelas,
+          });
+        }
+      }
       const estavaEditando =
         Boolean(
           lancamentoEditando
@@ -1570,6 +1630,9 @@ function App() {
 
         formaPagamento:
           lancamento.formaPagamento,
+
+        parcelasCartao:
+          lancamento.parcelasCartao ?? 2,
 
         unidade:
           lancamento.unidade ||
@@ -1661,7 +1724,7 @@ function App() {
     ]);
     alert(
       usuarioAtual.perfil === "Administrador"
-        ? "Estorno administrativo registrado fora de sess�o de caixa."
+        ? "Estorno administrativo registrado fora de sessão de caixa."
         : "Estorno registrado no financeiro e no caixa do usuário."
     );
   };
@@ -1775,9 +1838,9 @@ function App() {
           dia: novoLancamento.dia,
           data: novoLancamento.data,
           competencia: novoLancamento.competencia,
-          descricao: "Taxa de cart�o - " + conta.descricao,
+          descricao: "Taxa de cartão - " + conta.descricao,
           tipoEntrada: "",
-          tipoSaida: "Taxas de cart�o",
+          tipoSaida: "Taxas de cartão",
           formaPagamento: novoLancamento.formaPagamento,
           entrada: 0,
           saida: conta.taxaCartao ?? 0,
@@ -1830,9 +1893,9 @@ function App() {
           dia: novoLancamento.dia,
           data,
           competencia: novoLancamento.competencia,
-          descricao: "Taxa de cart�o - " + recebimento.alunoNome,
+          descricao: "Taxa de cartão - " + recebimento.alunoNome,
           tipoEntrada: "",
-          tipoSaida: "Taxas de cart�o",
+          tipoSaida: "Taxas de cartão",
           formaPagamento: recebimento.formaPagamento,
           entrada: 0,
           saida: recebimento.taxaCartao ?? 0,
@@ -2070,7 +2133,7 @@ function App() {
 
     "Relatórios",
 
-    "Gest�o e Fechamento",
+    "Gestão e Fechamento",
 
     "Configurações",
 
@@ -2387,7 +2450,7 @@ function App() {
           <>
             <Cabecalho
               titulo="Dashboard Financeiro"
-              subtitulo="Vis�o geral das suas finanças"
+              subtitulo="Visão geral das suas finanças"
             />
 
             <section
@@ -3101,7 +3164,7 @@ function App() {
                 }
               >
                 <h2>
-                  Nenhuma movimenta��o
+                  Nenhuma movimentação
                 </h2>
 
                 <p
@@ -3109,7 +3172,7 @@ function App() {
                     estilos.textoCinza
                   }
                 >
-                  Os bancos aparecer�o automaticamente quando houver lançamentos.
+                  Os bancos aparecerão automaticamente quando houver lançamentos.
                 </p>
               </section>
             ) : (
@@ -3235,7 +3298,7 @@ function App() {
                           estilos.botaoSecundario
                         }
                       >
-                        Limpar sele��o
+                        Limpar seleção
                       </button>
                     )}
                   </div>
@@ -3272,7 +3335,7 @@ function App() {
           </>
         )}
 
-        {/* IMPORTA��O */}
+        {/* IMPORTAÇÃO */}
 
         {pagina ===
           "Importar Excel" && (
@@ -3280,7 +3343,7 @@ function App() {
             <Cabecalho
               titulo="Importar Excel"
 
-              subtitulo="Importa��o das planilhas financeiras"
+              subtitulo="Importação das planilhas financeiras"
             />
 
             <section
@@ -3359,7 +3422,7 @@ function App() {
                         estilos.botaoConfirmar
                       }
                     >
-                      Confirmar importa��o
+                      Confirmar importação
                     </button>
 
                     <button
@@ -3525,7 +3588,7 @@ function App() {
         )}
 
         {pagina ===
-          "Gest�o e Fechamento" && (
+          "Gestão e Fechamento" && (
           <GestaoFinanceira
             usuarioAtual={
               usuarioAtual
@@ -3721,6 +3784,17 @@ function GraficoFluxo({
    FORMULÁRIO
 ========================================================= */
 
+const converterValorCartao = (valor: string) => {
+  const texto = valor.replace("R$", "").replace(/s/g, "");
+  const normalizado = texto.includes(",")
+    ? texto.replace(/./g, "").replace(",", ".")
+    : texto;
+  const numero = Number(normalizado);
+  return Number.isFinite(numero) ? numero : 0;
+};
+
+const moedaCartao = (valor: number) =>
+  valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 function FormularioLancamento({
   tipo,
 
@@ -3811,7 +3885,7 @@ function FormularioLancamento({
         </label>
 
         <Campo
-          label="Descri��o"
+          label="Descrição"
 
           value={
             formulario.descricao
@@ -3893,27 +3967,55 @@ function FormularioLancamento({
         />
 
         <CampoSelect
-          label="Banco / Conta"
-
-          value={
-            formulario.formaPagamento
-          }
-
-          opcoes={
-            configuracoes.bancos
-          }
-
+          label="Forma de pagamento / Conta"
+          value={formulario.formaPagamento}
+          opcoes={Array.from(new Set([
+            "Dinheiro",
+            "PIX",
+            "Cartão de crédito à vista",
+            "Cartão de débito",
+            "Cartão parcelado",
+            "Transferência",
+            ...configuracoes.bancos,
+          ]))}
           onChange={(valor) =>
-            setFormulario(
-              (atual) => ({
-                ...atual,
-
-                formaPagamento:
-                  valor,
-              })
-            )
+            setFormulario((atual) => ({
+              ...atual,
+              formaPagamento: valor,
+              parcelasCartao: valor === "Cartão parcelado" ? Math.max(2, atual.parcelasCartao) : 2,
+            }))
           }
         />
+
+        {formulario.formaPagamento === "Cartão parcelado" && (
+          <CampoSelect
+            label="Quantidade de parcelas"
+            value={String(formulario.parcelasCartao)}
+            opcoes={Array.from({ length: 11 }, (_, indice) => String(indice + 2))}
+            onChange={(valor) =>
+              setFormulario((atual) => ({
+                ...atual,
+                parcelasCartao: Number(valor),
+              }))
+            }
+          />
+        )}
+
+        {(formulario.formaPagamento === "Cartão de crédito à vista" ||
+          formulario.formaPagamento === "Cartão de débito" ||
+          formulario.formaPagamento === "Cartão parcelado") && (
+          <div style={estilos.competenciaInfo}>
+            {(() => {
+              const calculo = calcularTaxaCartao(
+                converterValorCartao(formulario.valor),
+                formulario.formaPagamento,
+                formulario.parcelasCartao
+              );
+              return "Taxa automática: " + moedaCartao(calculo.taxa) +
+                " • Valor líquido: " + moedaCartao(calculo.liquido);
+            })()}
+          </div>
+        )}
 
         <CampoSelect
           label="Unidade"
@@ -3988,7 +4090,7 @@ function FormularioLancamento({
               estilos.botaoSecundario
             }
           >
-            Cancelar edi��o
+            Cancelar edição
           </button>
         )}
       </div>
@@ -4160,7 +4262,7 @@ function Filtros({
       <input
         value={busca}
 
-        placeholder="Buscar por descri��o..."
+        placeholder="Buscar por descrição..."
 
         onChange={(
           evento
@@ -4514,7 +4616,7 @@ function Tabela({
                 estilos.th
               }
             >
-              Descri��o
+              Descrição
             </th>
 
             <th

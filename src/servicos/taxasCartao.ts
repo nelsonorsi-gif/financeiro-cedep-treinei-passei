@@ -1,4 +1,4 @@
-﻿export type ModalidadeCartao = "debito" | "credito";
+export type ModalidadeCartao = "debito" | "credito";
 
 export type TaxaCartao = {
   modalidade: ModalidadeCartao;
@@ -61,7 +61,7 @@ export function calcularTaxaCartao(
   const texto = formaPagamento.toLowerCase();
   const modalidade: ModalidadeCartao | null = texto.includes("débito") || texto.includes("debito")
     ? "debito"
-    : texto.includes("crédito") || texto.includes("credito")
+    : texto.includes("crédito") || texto.includes("credito") || texto.includes("parcelado")
       ? "credito"
       : null;
 
@@ -69,7 +69,10 @@ export function calcularTaxaCartao(
     return { taxa: 0, liquido: valorBruto, modalidade: null, parcelas: 1 };
   }
 
-  const quantidade = modalidade === "debito" ? 1 : Math.min(12, Math.max(1, parcelas));
+  const ehAVista = texto.includes("à vista") || texto.includes("a vista");
+  const quantidade = modalidade === "debito" || ehAVista
+    ? 1
+    : Math.min(12, Math.max(2, parcelas));
   const configuracao = carregarTaxasCartao().find(
     (item) =>
       item.modalidade === modalidade &&

@@ -29,7 +29,7 @@ export const CONFIGURACOES_PADRAO: ConfiguracoesFinanceiras =
       "Mensalidade",
       "Matrícula",
       "Material",
-      "Inscri��o",
+      "Inscrição",
       "Outros",
     ],
 
@@ -42,7 +42,7 @@ export const CONFIGURACOES_PADRAO: ConfiguracoesFinanceiras =
       "Material",
       "Aluguel",
       "Combustível",
-      "Manuten��o",
+      "Manutenção",
       "Outros",
     ],
 
@@ -183,7 +183,7 @@ function Configuracoes() {
 
     if (!texto) {
       alert(
-        "Digite uma op��o."
+        "Digite uma opção."
       );
 
       return;
@@ -198,7 +198,7 @@ function Configuracoes() {
 
     if (jaExiste) {
       alert(
-        "Esta op��o já está cadastrada."
+        "Esta opção já está cadastrada."
       );
 
       return;
@@ -254,7 +254,7 @@ function Configuracoes() {
     () => {
       const confirmar =
         window.confirm(
-          "Deseja restaurar as listas padr�o?"
+          "Deseja restaurar as listas padrão?"
         );
 
       if (!confirmar) {
@@ -266,7 +266,7 @@ function Configuracoes() {
       );
 
       alert(
-        "Listas padr�o restauradas."
+        "Listas padrão restauradas."
       );
     };
 
@@ -402,7 +402,7 @@ function Configuracoes() {
 
       const confirmar =
         window.confirm(
-          "A restaura��o substituirá os dados financeiros atuais deste navegador. Deseja continuar?"
+          "A restauração substituirá os dados financeiros atuais deste navegador. Deseja continuar?"
         );
 
       if (!confirmar) {
@@ -462,7 +462,7 @@ function Configuracoes() {
       );
 
       alert(
-        "N�o foi possível restaurar este arquivo. Selecione um backup gerado pelo próprio sistema."
+        "Não foi possível restaurar este arquivo. Selecione um backup gerado pelo próprio sistema."
       );
     }
   };
@@ -616,7 +616,7 @@ function Configuracoes() {
       </div>
 
       <section style={{ ...estilos.caixa, marginTop: 25 }}>
-        <h2>Taxas de cart�o</h2>
+        <h2>Taxas de cartão</h2>
         <p style={estilos.textoCinza}>
           Cadastro administrativo para débito e crédito de 1x a 12x. A taxa é
           calculada automaticamente no recebimento e lançada como despesa.
@@ -694,11 +694,11 @@ function Configuracoes() {
         <button
           onClick={() => {
             salvarTaxasCartao(taxasCartao);
-            alert("Taxas de cart�o salvas.");
+            alert("Taxas de cartão salvas.");
           }}
           style={{ ...estilos.botaoBackup, marginTop: 20 }}
         >
-          Salvar taxas de cart�o
+          Salvar taxas de cartão
         </button>
       </section>
       <section
@@ -709,7 +709,7 @@ function Configuracoes() {
         }}
       >
         <h2>
-          Backup e restaura��o
+          Backup e restauração
         </h2>
 
         <p
@@ -778,9 +778,9 @@ function Configuracoes() {
             estilos.avisoBackup
           }
         >
-          A restaura��o substitui os
+          A restauração substitui os
           dados atuais somente depois
-          da sua confirma��o.
+          da sua confirmação.
         </div>
       </section>
 
@@ -800,8 +800,8 @@ function Configuracoes() {
             estilos.textoCinza
           }
         >
-          Este bot�o restaura apenas
-          as listas de opções. Ele n�o
+          Este botão restaura apenas
+          as listas de opções. Ele não
           apaga lançamentos financeiros.
         </p>
 
@@ -813,7 +813,7 @@ function Configuracoes() {
             estilos.botaoSecundario
           }
         >
-          Restaurar listas padr�o
+          Restaurar listas padrão
         </button>
       </section>
     </div>
@@ -859,7 +859,7 @@ function ListaConfiguracao({
           value={
             valorNovo
           }
-          placeholder="Digite uma nova op��o"
+          placeholder="Digite uma nova opção"
           onChange={(
             evento
           ) =>
@@ -903,7 +903,7 @@ function ListaConfiguracao({
               estilos.textoCinza
             }
           >
-            Nenhuma op��o cadastrada.
+            Nenhuma opção cadastrada.
           </p>
         ) : (
           itens.map(
