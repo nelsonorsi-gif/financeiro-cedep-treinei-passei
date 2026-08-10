@@ -14,6 +14,9 @@ import {
   carregarConfiguracoes,
   type ConfiguracoesFinanceiras,
 } from "./Configuracoes";
+import type { UsuarioSessao } from "./Acesso";
+import { EVENTO_CAIXA_ATUALIZADO, registrarMovimentoCaixa, totaisDaSessao, type MovimentoCaixa } from "./servicos/caixaOperacional";
+import { calcularTaxaCartao } from "./servicos/taxasCartao";
 
 export type RecebimentoCaixa = {
   id: string;
@@ -24,15 +27,21 @@ export type RecebimentoCaixa = {
   formaPagamento: string;
   unidade: string;
   dataHora: string;
+  modalidadeCartao?: "debito" | "credito";
+  parcelasCartao?: number;
+  taxaCartao?: number;
+  valorLiquidoCartao?: number;
 };
 
 export type SessaoCaixa = {
   id: string;
   operador: string;
+  operadorId?: string;
   unidade: string;
   abertura: string;
   valorInicial: number;
   recebimentos: RecebimentoCaixa[];
+  movimentos?: MovimentoCaixa[];
   status: "Aberto" | "Fechado";
   fechamento?: string;
   valorInformado?: number;
@@ -42,6 +51,7 @@ export type SessaoCaixa = {
 };
 
 type Props = {
+  usuarioAtual: UsuarioSessao;
   onRegistrarReceita: (
     recebimento: RecebimentoCaixa
   ) => void;
@@ -72,6 +82,7 @@ const converterNumero = (
 };
 
 function Secretaria({
+  usuarioAtual,
   onRegistrarReceita,
 }: Props) {
   const [sessoes, setSessoes] =
@@ -89,7 +100,7 @@ function Secretaria({
     useState(false);
 
   const [operador, setOperador] =
-    useState("Secretaria");
+    useState(usuarioAtual.nome);
   const [unidadeAbertura, setUnidadeAbertura] =
     useState("CEDEP");
   const [valorInicial, setValorInicial] =
@@ -103,6 +114,7 @@ function Secretaria({
     useState("");
   const [formaPagamento, setFormaPagamento] =
     useState("");
+  const [parcelasCartao, setParcelasCartao] = useState(1);
 
   const [valorFechamento, setValorFechamento] =
     useState("");
@@ -182,10 +194,25 @@ function Secretaria({
       );
   }, []);
 
+
+  useEffect(() => {
+    const atualizarCaixa = () => {
+      try {
+        const salvo = localStorage.getItem(CHAVE_SECRETARIA);
+        const conteudo = salvo ? JSON.parse(salvo) : null;
+        if (Array.isArray(conteudo?.sessoes)) setSessoes(conteudo.sessoes);
+      } catch (erro) {
+        console.error("Erro ao atualizar caixa:", erro);
+      }
+    };
+    window.addEventListener(EVENTO_CAIXA_ATUALIZADO, atualizarCaixa);
+    return () => window.removeEventListener(EVENTO_CAIXA_ATUALIZADO, atualizarCaixa);
+  }, []);
   const caixaAberto =
     sessoes.find(
       (item) =>
-        item.status === "Aberto"
+        item.status === "Aberto" &&
+        (item.operadorId === usuarioAtual.id || (!item.operadorId && item.operador === usuarioAtual.nome))
     ) ?? null;
 
   const totalRecebido =
@@ -195,9 +222,18 @@ function Secretaria({
       0
     ) ?? 0;
 
-  const valorEsperado =
-    (caixaAberto?.valorInicial ?? 0) +
-    totalRecebido;
+  const totaisMovimento = caixaAberto?.movimentos?.length
+    ? totaisDaSessao(caixaAberto)
+    : null;
+  const valorEsperado = totaisMovimento?.saldoEsperado ??
+    ((caixaAberto?.valorInicial ?? 0) + totalRecebido);
+  const resumoFormas = (caixaAberto?.movimentos ?? []).reduce<Record<string, number>>(
+    (totais, movimento) => {
+      const sinal = movimento.natureza === "entrada" || movimento.natureza === "estorno_saida" ? 1 : -1;
+      totais[movimento.formaPagamento] = (totais[movimento.formaPagamento] ?? 0) + sinal * movimento.valor;
+      return totais;
+    }, {}
+  );
 
   const alunosAtivos = useMemo(
     () =>
@@ -240,11 +276,13 @@ function Secretaria({
     const sessao: SessaoCaixa = {
       id: `caixa-${Date.now()}`,
       operador: operador.trim(),
+      operadorId: usuarioAtual.id,
       unidade: unidadeAbertura,
       abertura:
         new Date().toISOString(),
       valorInicial: inicial,
       recebimentos: [],
+      movimentos: [],
       status: "Aberto",
     };
 
@@ -278,10 +316,12 @@ function Secretaria({
       !formaPagamento
     ) {
       alert(
-        "Preencha aluno, descrição, valor e forma de pagamento."
+        "Preencha aluno, descri��o, valor e forma de pagamento."
       );
       return;
     }
+
+    const cartao = calcularTaxaCartao(valorNumerico, formaPagamento, parcelasCartao);
 
     const recebimento: RecebimentoCaixa = {
       id: `recebimento-${Date.now()}`,
@@ -296,6 +336,10 @@ function Secretaria({
         caixaAberto.unidade,
       dataHora:
         new Date().toISOString(),
+      modalidadeCartao: cartao.modalidade ?? undefined,
+      parcelasCartao: cartao.parcelas,
+      taxaCartao: cartao.taxa,
+      valorLiquidoCartao: cartao.liquido,
     };
 
     setSessoes((atuais) =>
@@ -312,6 +356,12 @@ function Secretaria({
       )
     );
 
+    registrarMovimentoCaixa(usuarioAtual, {
+      natureza: "entrada", origem: "secretaria", origemId: recebimento.id,
+      descricao: recebimento.descricao, valor: recebimento.valor,
+      formaPagamento: recebimento.formaPagamento, modalidadeCartao: recebimento.modalidadeCartao, parcelasCartao: recebimento.parcelasCartao, taxaCartao: recebimento.taxaCartao, valorLiquido: recebimento.valorLiquidoCartao, alunoId: recebimento.alunoId, alunoNome: recebimento.alunoNome,
+    });
+
     onRegistrarReceita(
       recebimento
     );
@@ -319,6 +369,7 @@ function Secretaria({
     setAlunoId("");
     setDescricao("Mensalidade");
     setValor("");
+    setParcelasCartao(1);
     alert(
       "Recebimento registrado no caixa e no financeiro."
     );
@@ -511,7 +562,7 @@ function Secretaria({
                   onChange={setAlunoId}
                 />
                 <Campo
-                  label="Descrição"
+                  label="Descri��o"
                   value={descricao}
                   onChange={
                     setDescricao
@@ -527,15 +578,28 @@ function Secretaria({
                   value={
                     formaPagamento
                   }
-                  opcoes={
-                    configuracoes.bancos
-                  }
+                  opcoes={Array.from(new Set(["Dinheiro", "PIX", "Cart�o de débito", "Cart�o de crédito", "Transferência", ...configuracoes.bancos]))}
                   onChange={
                     setFormaPagamento
                   }
                 />
               </div>
-              <button
+                {formaPagamento === "Cart�o de crédito" && (
+                  <CampoSelect
+                    label="Parcelamento"
+                    value={String(parcelasCartao)}
+                    opcoes={Array.from({ length: 12 }, (_, indice) => String(indice + 1))}
+                    onChange={(quantidade) => setParcelasCartao(Number(quantidade))}
+                  />
+                )}
+                {(formaPagamento === "Cart�o de débito" || formaPagamento === "Cart�o de crédito") && (
+                  <div style={estilos.textoCinza}>
+                    {(() => {
+                      const calculo = calcularTaxaCartao(converterNumero(valor), formaPagamento, parcelasCartao);
+                      return "Taxa automática: " + moeda(calculo.taxa) + " • Valor líquido: " + moeda(calculo.liquido);
+                    })()}
+                  </div>
+                )}              <button
                 onClick={
                   registrarRecebimento
                 }
@@ -564,7 +628,7 @@ function Secretaria({
                 }
               />
               <Campo
-                label="Observação"
+                label="Observa��o"
                 value={
                   observacaoFechamento
                 }
@@ -638,6 +702,27 @@ function Secretaria({
         </>
       )}
 
+          {Object.keys(resumoFormas).length > 0 && (
+            <section style={{ ...estilos.caixa, marginTop: 25 }}>
+              <h2>Conferência por forma de pagamento</h2>
+              {Object.entries(resumoFormas).map(([forma, total]) => (
+                <div key={forma} style={estilos.registro}>
+                  <strong>{forma}</strong>
+                  <strong>{moeda(total)}</strong>
+                </div>
+              ))}
+              {totaisMovimento && (
+                <>
+                  <div style={estilos.registro}><span>Entradas</span><strong>{moeda(totaisMovimento.entradas)}</strong></div>
+                  <div style={estilos.registro}><span>Saídas</span><strong>{moeda(totaisMovimento.saidas)}</strong></div>
+                  <div style={estilos.registro}><span>Estornos de entradas</span><strong>{moeda(totaisMovimento.estornosEntradas)}</strong></div>
+                  <div style={estilos.registro}><span>Estornos de saídas</span><strong>{moeda(totaisMovimento.estornosSaidas)}</strong></div>
+                  <div style={estilos.registro}><span>Taxas de cart�o</span><strong>{moeda((caixaAberto?.movimentos ?? []).reduce((total, movimento) => total + (movimento.taxaCartao ?? 0), 0))}</strong></div>
+                  <div style={estilos.registro}><span>Cartões líquido previsto</span><strong>{moeda((caixaAberto?.movimentos ?? []).reduce((total, movimento) => total + (movimento.valorLiquido ?? 0), 0))}</strong></div>
+                </>
+              )}
+            </section>
+          )}
       <section
         style={{
           ...estilos.caixa,

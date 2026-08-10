@@ -45,6 +45,7 @@ import {
   iniciarSincronizacaoAutomatica,
   prepararSincronizacaoInicial,
 } from "./servicos/sincronizacaoAutomatica";
+import { mensagemCaixaFechado, registrarMovimentoCaixa, usuarioPodeMovimentar } from "./servicos/caixaOperacional";
 
 import Configuracoes, {
   carregarConfiguracoes,
@@ -79,6 +80,15 @@ type Lancamento = {
   unidade: string;
 
   origem?: "manual" | "excel";
+  usuarioResponsavelId?: string;
+  usuarioResponsavelNome?: string;
+  caixaId?: string;
+  operacaoAdministrativa?: boolean;
+  estornoDeId?: string;
+  motivoEstorno?: string;
+  estornadoEm?: string;
+  taxaCartao?: number;
+  valorLiquidoCartao?: number;
 };
 
 const carregarDespesasPessoais =
@@ -263,7 +273,7 @@ const detectarMesAnoArquivo = (
 };
 
 /* =========================================================
-   FORMULÁRIO PADRÃO
+   FORMULÁRIO PADR�O
 ========================================================= */
 
 const criarFormularioVazio =
@@ -532,7 +542,7 @@ function App() {
     );
 
   /* =======================================================
-     ATUALIZAR LISTAS DE CONFIGURAÇÃO
+     ATUALIZAR LISTAS DE CONFIGURA��O
   ======================================================= */
 
   useEffect(() => {
@@ -579,14 +589,14 @@ function App() {
           ) as Lancamento[];
 
         /*
-          MIGRAÇÃO AUTOMÁTICA
+          MIGRA��O AUTOMÁTICA
 
           Os lançamentos antigos,
           sem data e competência,
-          são considerados Junho/2026.
+          s�o considerados Junho/2026.
 
           Os lançamentos que já têm
-          data não são alterados.
+          data n�o s�o alterados.
         */
 
         const dadosCorrigidos =
@@ -950,7 +960,7 @@ function App() {
             lancamento
               .formaPagamento
               .trim() ||
-            "Não informado";
+            "N�o informado";
 
           const chave =
             nome.toUpperCase();
@@ -1011,7 +1021,7 @@ function App() {
         (item) =>
           (
             item.formaPagamento.trim() ||
-            "Não informado"
+            "N�o informado"
           ).toUpperCase() ===
           bancoSelecionado.toUpperCase()
       );
@@ -1021,7 +1031,7 @@ function App() {
     ]);
 
   /* =======================================================
-     IMPORTAÇÃO EXCEL
+     IMPORTA��O EXCEL
   ======================================================= */
 
   const importarExcel = (
@@ -1047,7 +1057,7 @@ function App() {
       !periodoArquivo.ano
     ) {
       setMensagem(
-        "Não consegui identificar o mês e o ano pelo nome do arquivo. Use um nome como JULHO 2026.xlsx."
+        "N�o consegui identificar o mês e o ano pelo nome do arquivo. Use um nome como JULHO 2026.xlsx."
       );
 
       return;
@@ -1062,7 +1072,7 @@ function App() {
 
     if (jaImportado) {
       setMensagem(
-        "Este arquivo já foi importado anteriormente. A importação foi bloqueada para evitar duplicidade."
+        "Este arquivo já foi importado anteriormente. A importa��o foi bloqueada para evitar duplicidade."
       );
 
       return;
@@ -1081,7 +1091,7 @@ function App() {
 
         if (!conteudo) {
           setMensagem(
-            "Não foi possível abrir o arquivo."
+            "N�o foi possível abrir o arquivo."
           );
 
           return;
@@ -1241,7 +1251,7 @@ function App() {
         }
 
         setMensagem(
-          `${novosLancamentos.length} lançamentos encontrados para ${periodoArquivo.mes}/${periodoArquivo.ano}. Confira os valores e confirme a importação.`
+          `${novosLancamentos.length} lançamentos encontrados para ${periodoArquivo.mes}/${periodoArquivo.ano}. Confira os valores e confirme a importa��o.`
         );
       } catch (erro) {
         console.error(
@@ -1257,7 +1267,7 @@ function App() {
 
     leitor.onerror = () => {
       setMensagem(
-        "Não foi possível abrir o arquivo selecionado."
+        "N�o foi possível abrir o arquivo selecionado."
       );
     };
 
@@ -1301,7 +1311,7 @@ function App() {
       );
 
       setMensagem(
-        "Importação confirmada e salva com sucesso."
+        "Importa��o confirmada e salva com sucesso."
       );
 
       setPreVisualizacao(
@@ -1332,6 +1342,7 @@ function App() {
         | "Entrada"
         | "Saída"
     ) => {
+      if (!usuarioAtual) return;
       const descricao =
         formulario.descricao.trim();
 
@@ -1352,7 +1363,7 @@ function App() {
 
       if (!descricao) {
         alert(
-          "Digite uma descrição."
+          "Digite uma descri��o."
         );
 
         return;
@@ -1408,6 +1419,20 @@ function App() {
         return;
       }
 
+      if (!usuarioPodeMovimentar(usuarioAtual)) {
+        if (window.confirm(`${mensagemCaixaFechado}\n\nDeseja abrir o caixa agora?`)) setPagina("Secretaria e Caixa");
+        return;
+      }
+
+      const identificacaoCaixa = registrarMovimentoCaixa(usuarioAtual, {
+        natureza: tipo === "Entrada" ? "entrada" : "saida",
+        origem: tipo === "Entrada" ? "receita" : "despesa",
+        origemId: lancamentoEditando ?? `manual-${Date.now()}`,
+        descricao,
+        valor,
+        formaPagamento: formulario.formaPagamento,
+      });
+
       const novoLancamento: Lancamento =
         {
           id:
@@ -1461,6 +1486,10 @@ function App() {
 
           origem:
             "manual",
+          usuarioResponsavelId: usuarioAtual.id,
+          usuarioResponsavelNome: usuarioAtual.nome,
+          caixaId: "caixaId" in identificacaoCaixa ? identificacaoCaixa.caixaId : undefined,
+          operacaoAdministrativa: usuarioAtual.perfil === "Administrador",
         };
 
       if (
@@ -1583,6 +1612,83 @@ function App() {
       );
     };
 
+
+  const estornarLancamento = (lancamento: Lancamento) => {
+    if (lancamento.estornoDeId || lancamento.estornadoEm) {
+      alert("Este lançamento já é um estorno ou já foi estornado.");
+      return;
+    }
+    if (!usuarioAtual) return;
+    if (!usuarioPodeMovimentar(usuarioAtual)) {
+      if (window.confirm(mensagemCaixaFechado + "\n\nDeseja abrir o caixa agora?")) {
+        setPagina("Secretaria e Caixa");
+      }
+      return;
+    }
+    const motivo = window.prompt("Informe o motivo obrigatório do estorno:");
+    if (!motivo?.trim()) return;
+
+    const agora = new Date().toISOString();
+    const estorno: Lancamento = {
+      ...lancamento,
+      id: "estorno-" + lancamento.id + "-" + Date.now(),
+      descricao: "Estorno: " + lancamento.descricao,
+      entrada: lancamento.saida,
+      saida: lancamento.entrada,
+      tipoEntrada: lancamento.saida > 0 ? "Estorno de saída" : "",
+      tipoSaida: lancamento.entrada > 0 ? "Estorno de entrada" : "",
+      estornoDeId: lancamento.id,
+      motivoEstorno: motivo.trim(),
+      usuarioResponsavelId: usuarioAtual.id,
+      usuarioResponsavelNome: usuarioAtual.nome,
+      operacaoAdministrativa: usuarioAtual.perfil === "Administrador",
+    };
+
+    registrarMovimentoCaixa(usuarioAtual, {
+      natureza: lancamento.entrada > 0 ? "estorno_entrada" : "estorno_saida",
+      origem: "lancamento",
+      origemId: lancamento.id,
+      descricao: estorno.descricao,
+      valor: Math.max(lancamento.entrada, lancamento.saida),
+      formaPagamento: lancamento.formaPagamento,
+      motivoEstorno: motivo.trim(),
+    });
+
+    setLancamentos((atuais) => [
+      ...atuais.map((item) => item.id === lancamento.id ? { ...item, estornadoEm: agora } : item),
+      estorno,
+    ]);
+    alert(
+      usuarioAtual.perfil === "Administrador"
+        ? "Estorno administrativo registrado fora de sess�o de caixa."
+        : "Estorno registrado no financeiro e no caixa do usuário."
+    );
+  };
+
+  const estornarContaFinanceira = (conta: Conta, valor: number, motivo: string) => {
+    if (!usuarioAtual) return;
+    const data = hojeISO();
+    const lancamento: Lancamento = {
+      id: "estorno-conta-" + conta.id + "-" + Date.now(),
+      dia: diaDaData(data),
+      data,
+      competencia: competenciaDaData(data),
+      descricao: "Estorno: " + conta.descricao + " (" + motivo + ")",
+      tipoEntrada: conta.tipo === "pagar" ? "Estorno de conta paga" : "",
+      tipoSaida: conta.tipo === "receber" ? "Estorno de conta recebida" : "",
+      formaPagamento: conta.formaPagamentoBaixa || conta.banco,
+      entrada: conta.tipo === "pagar" ? valor : 0,
+      saida: conta.tipo === "receber" ? valor : 0,
+      unidade: conta.unidade,
+      origem: "manual",
+      estornoDeId: conta.id,
+      motivoEstorno: motivo,
+      usuarioResponsavelId: usuarioAtual.id,
+      usuarioResponsavelNome: usuarioAtual.nome,
+      operacaoAdministrativa: usuarioAtual.perfil === "Administrador",
+    };
+    setLancamentos((atuais) => [...atuais, lancamento]);
+  };
   const cancelarEdicao =
     () => {
       setFormulario(
@@ -1661,13 +1767,26 @@ function App() {
             "manual",
         };
 
-      setLancamentos(
-        (atuais) => [
-          ...atuais,
-
-          novoLancamento,
-        ]
-      );
+      const lancamentosNovos: Lancamento[] = [novoLancamento];
+      if ((conta.taxaCartao ?? 0) > 0) {
+        lancamentosNovos.push({
+          id: "taxa-cartao-" + novoLancamento.id,
+          dia: novoLancamento.dia,
+          data: novoLancamento.data,
+          competencia: novoLancamento.competencia,
+          descricao: "Taxa de cart�o - " + conta.descricao,
+          tipoEntrada: "",
+          tipoSaida: "Taxas de cart�o",
+          formaPagamento: novoLancamento.formaPagamento,
+          entrada: 0,
+          saida: conta.taxaCartao ?? 0,
+          unidade: conta.unidade,
+          origem: "manual",
+          usuarioResponsavelId: usuarioAtual?.id,
+          usuarioResponsavelNome: usuarioAtual?.nome,
+        });
+      }
+      setLancamentos((atuais) => [...atuais, ...lancamentosNovos]);
     };
 
   const registrarReceitaSecretaria =
@@ -1703,12 +1822,26 @@ function App() {
           origem: "manual",
         };
 
-      setLancamentos(
-        (atuais) => [
-          ...atuais,
-          novoLancamento,
-        ]
-      );
+      const lancamentosNovos: Lancamento[] = [novoLancamento];
+      if ((recebimento.taxaCartao ?? 0) > 0) {
+        lancamentosNovos.push({
+          id: "taxa-cartao-" + recebimento.id,
+          dia: novoLancamento.dia,
+          data,
+          competencia: novoLancamento.competencia,
+          descricao: "Taxa de cart�o - " + recebimento.alunoNome,
+          tipoEntrada: "",
+          tipoSaida: "Taxas de cart�o",
+          formaPagamento: recebimento.formaPagamento,
+          entrada: 0,
+          saida: recebimento.taxaCartao ?? 0,
+          unidade: recebimento.unidade,
+          origem: "manual",
+          usuarioResponsavelId: usuarioAtual?.id,
+          usuarioResponsavelNome: usuarioAtual?.nome,
+        });
+      }
+      setLancamentos((atuais) => [...atuais, ...lancamentosNovos]);
     };
 
   const registrarPagamentoProfessor =
@@ -1936,7 +2069,7 @@ function App() {
 
     "Relatórios",
 
-    "Gestão e Fechamento",
+    "Gest�o e Fechamento",
 
     "Configurações",
 
@@ -2246,7 +2379,7 @@ function App() {
           <>
             <Cabecalho
               titulo="Dashboard Financeiro"
-              subtitulo="Visão geral das suas finanças"
+              subtitulo="Vis�o geral das suas finanças"
             />
 
             <section
@@ -2540,6 +2673,7 @@ function App() {
                   excluirLancamento={
                     excluirLancamento
                   }
+                  estornarLancamento={estornarLancamento}
 
                   ocultarValores={
                     valoresDashboardOcultos
@@ -2718,24 +2852,21 @@ function App() {
         {pagina ===
           "Matrículas e Turmas" && (
           <Academico
-            usuarioAtual={
-              usuarioAtual
-            }
+            usuarioAtual={usuarioAtual}
           />
         )}
 
         {pagina ===
           "Registro de Presença" && (
           <Presenca
-            usuarioAtual={
-              usuarioAtual
-            }
+            usuarioAtual={usuarioAtual}
           />
         )}
 
         {pagina ===
           "Secretaria e Caixa" && (
           <Secretaria
+            usuarioAtual={usuarioAtual}
             onRegistrarReceita={
               registrarReceitaSecretaria
             }
@@ -2820,6 +2951,7 @@ function App() {
                   excluirLancamento={
                     excluirLancamento
                   }
+                  estornarLancamento={estornarLancamento}
                 />
               )}
             </section>
@@ -2901,6 +3033,7 @@ function App() {
                   excluirLancamento={
                     excluirLancamento
                   }
+                  estornarLancamento={estornarLancamento}
                 />
               )}
             </section>
@@ -2917,9 +3050,11 @@ function App() {
             onBaixar={
               baixarContaFinanceira
             }
+            onEstornar={estornarContaFinanceira}
             usuarioAtual={
               usuarioAtual
             }
+            onAbrirCaixa={() => setPagina("Secretaria e Caixa")}
           />
         )}
 
@@ -2931,9 +3066,11 @@ function App() {
             onBaixar={
               baixarContaFinanceira
             }
+            onEstornar={estornarContaFinanceira}
             usuarioAtual={
               usuarioAtual
             }
+            onAbrirCaixa={() => setPagina("Secretaria e Caixa")}
           />
         )}
 
@@ -2956,7 +3093,7 @@ function App() {
                 }
               >
                 <h2>
-                  Nenhuma movimentação
+                  Nenhuma movimenta��o
                 </h2>
 
                 <p
@@ -2964,7 +3101,7 @@ function App() {
                     estilos.textoCinza
                   }
                 >
-                  Os bancos aparecerão automaticamente quando houver lançamentos.
+                  Os bancos aparecer�o automaticamente quando houver lançamentos.
                 </p>
               </section>
             ) : (
@@ -3090,7 +3227,7 @@ function App() {
                           estilos.botaoSecundario
                         }
                       >
-                        Limpar seleção
+                        Limpar sele��o
                       </button>
                     )}
                   </div>
@@ -3118,6 +3255,7 @@ function App() {
                       excluirLancamento={
                         excluirLancamento
                       }
+                  estornarLancamento={estornarLancamento}
                     />
                   )}
                 </section>
@@ -3126,7 +3264,7 @@ function App() {
           </>
         )}
 
-        {/* IMPORTAÇÃO */}
+        {/* IMPORTA��O */}
 
         {pagina ===
           "Importar Excel" && (
@@ -3134,7 +3272,7 @@ function App() {
             <Cabecalho
               titulo="Importar Excel"
 
-              subtitulo="Importação das planilhas financeiras"
+              subtitulo="Importa��o das planilhas financeiras"
             />
 
             <section
@@ -3213,7 +3351,7 @@ function App() {
                         estilos.botaoConfirmar
                       }
                     >
-                      Confirmar importação
+                      Confirmar importa��o
                     </button>
 
                     <button
@@ -3379,7 +3517,7 @@ function App() {
         )}
 
         {pagina ===
-          "Gestão e Fechamento" && (
+          "Gest�o e Fechamento" && (
           <GestaoFinanceira
             usuarioAtual={
               usuarioAtual
@@ -3665,7 +3803,7 @@ function FormularioLancamento({
         </label>
 
         <Campo
-          label="Descrição"
+          label="Descri��o"
 
           value={
             formulario.descricao
@@ -3842,7 +3980,7 @@ function FormularioLancamento({
               estilos.botaoSecundario
             }
           >
-            Cancelar edição
+            Cancelar edi��o
           </button>
         )}
       </div>
@@ -4014,7 +4152,7 @@ function Filtros({
       <input
         value={busca}
 
-        placeholder="Buscar por descrição..."
+        placeholder="Buscar por descri��o..."
 
         onChange={(
           evento
@@ -4246,6 +4384,8 @@ function Tabela({
 
   excluirLancamento,
 
+  estornarLancamento,
+
   paginar = false,
 
   ocultarValores = false,
@@ -4262,6 +4402,8 @@ function Tabela({
     lancamento:
       Lancamento
   ) => void;
+
+  estornarLancamento?: (lancamento: Lancamento) => void;
 
   paginar?: boolean;
 
@@ -4364,7 +4506,7 @@ function Tabela({
                 estilos.th
               }
             >
-              Descrição
+              Descri��o
             </th>
 
             <th
@@ -4568,7 +4710,15 @@ function Tabela({
                         </button>
                       )}
 
-                      {excluirLancamento && (
+
+                      {estornarLancamento && !item.estornoDeId && !item.estornadoEm && (
+                        <button
+                          onClick={() => estornarLancamento(item)}
+                          style={estilos.botaoExcluir}
+                        >
+                          Estornar
+                        </button>
+                      )}                      {excluirLancamento && (
                         <button
                           onClick={() =>
                             excluirLancamento(

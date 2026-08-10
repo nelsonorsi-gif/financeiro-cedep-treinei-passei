@@ -3,6 +3,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { carregarTaxasCartao, salvarTaxasCartao, type TaxaCartao } from "./servicos/taxasCartao";
 
 export type ConfiguracoesFinanceiras = {
   bancos: string[];
@@ -28,7 +29,7 @@ export const CONFIGURACOES_PADRAO: ConfiguracoesFinanceiras =
       "Mensalidade",
       "Matrícula",
       "Material",
-      "Inscrição",
+      "Inscri��o",
       "Outros",
     ],
 
@@ -41,7 +42,7 @@ export const CONFIGURACOES_PADRAO: ConfiguracoesFinanceiras =
       "Material",
       "Aluguel",
       "Combustível",
-      "Manutenção",
+      "Manuten��o",
       "Outros",
     ],
 
@@ -112,6 +113,8 @@ function Configuracoes() {
       CONFIGURACOES_PADRAO
     );
 
+  const [taxasCartao, setTaxasCartao] = useState<TaxaCartao[]>(carregarTaxasCartao());
+
   const [
     novoBanco,
     setNovoBanco,
@@ -180,7 +183,7 @@ function Configuracoes() {
 
     if (!texto) {
       alert(
-        "Digite uma opção."
+        "Digite uma op��o."
       );
 
       return;
@@ -195,7 +198,7 @@ function Configuracoes() {
 
     if (jaExiste) {
       alert(
-        "Esta opção já está cadastrada."
+        "Esta op��o já está cadastrada."
       );
 
       return;
@@ -251,7 +254,7 @@ function Configuracoes() {
     () => {
       const confirmar =
         window.confirm(
-          "Deseja restaurar as listas padrão?"
+          "Deseja restaurar as listas padr�o?"
         );
 
       if (!confirmar) {
@@ -263,7 +266,7 @@ function Configuracoes() {
       );
 
       alert(
-        "Listas padrão restauradas."
+        "Listas padr�o restauradas."
       );
     };
 
@@ -399,7 +402,7 @@ function Configuracoes() {
 
       const confirmar =
         window.confirm(
-          "A restauração substituirá os dados financeiros atuais deste navegador. Deseja continuar?"
+          "A restaura��o substituirá os dados financeiros atuais deste navegador. Deseja continuar?"
         );
 
       if (!confirmar) {
@@ -459,7 +462,7 @@ function Configuracoes() {
       );
 
       alert(
-        "Não foi possível restaurar este arquivo. Selecione um backup gerado pelo próprio sistema."
+        "N�o foi possível restaurar este arquivo. Selecione um backup gerado pelo próprio sistema."
       );
     }
   };
@@ -612,6 +615,92 @@ function Configuracoes() {
         />
       </div>
 
+      <section style={{ ...estilos.caixa, marginTop: 25 }}>
+        <h2>Taxas de cart�o</h2>
+        <p style={estilos.textoCinza}>
+          Cadastro administrativo para débito e crédito de 1x a 12x. A taxa é
+          calculada automaticamente no recebimento e lançada como despesa.
+        </p>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ padding: 10, textAlign: "left" }}>Modalidade</th>
+                <th style={{ padding: 10, textAlign: "left" }}>Percentual (%)</th>
+                <th style={{ padding: 10, textAlign: "left" }}>Taxa fixa (R$)</th>
+                <th style={{ padding: 10, textAlign: "left" }}>Ativa</th>
+              </tr>
+            </thead>
+            <tbody>
+              {taxasCartao.map((taxa, indice) => (
+                <tr key={taxa.modalidade + taxa.parcelas}>
+                  <td style={{ padding: 10 }}>
+                    {taxa.modalidade === "debito" ? "Débito" : `Crédito ${taxa.parcelas}x`}
+                  </td>
+                  <td style={{ padding: 10 }}>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={taxa.percentual}
+                      onChange={(evento) =>
+                        setTaxasCartao((atuais) =>
+                          atuais.map((item, atual) =>
+                            atual === indice
+                              ? { ...item, percentual: Number(evento.target.value) || 0 }
+                              : item
+                          )
+                        )
+                      }
+                      style={estilos.input}
+                    />
+                  </td>
+                  <td style={{ padding: 10 }}>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={taxa.taxaFixa}
+                      onChange={(evento) =>
+                        setTaxasCartao((atuais) =>
+                          atuais.map((item, atual) =>
+                            atual === indice
+                              ? { ...item, taxaFixa: Number(evento.target.value) || 0 }
+                              : item
+                          )
+                        )
+                      }
+                      style={estilos.input}
+                    />
+                  </td>
+                  <td style={{ padding: 10 }}>
+                    <input
+                      type="checkbox"
+                      checked={taxa.ativa}
+                      onChange={(evento) =>
+                        setTaxasCartao((atuais) =>
+                          atuais.map((item, atual) =>
+                            atual === indice ? { ...item, ativa: evento.target.checked } : item
+                          )
+                        )
+                      }
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button
+          onClick={() => {
+            salvarTaxasCartao(taxasCartao);
+            alert("Taxas de cart�o salvas.");
+          }}
+          style={{ ...estilos.botaoBackup, marginTop: 20 }}
+        >
+          Salvar taxas de cart�o
+        </button>
+      </section>
       <section
         style={{
           ...estilos.caixa,
@@ -620,7 +709,7 @@ function Configuracoes() {
         }}
       >
         <h2>
-          Backup e restauração
+          Backup e restaura��o
         </h2>
 
         <p
@@ -689,9 +778,9 @@ function Configuracoes() {
             estilos.avisoBackup
           }
         >
-          A restauração substitui os
+          A restaura��o substitui os
           dados atuais somente depois
-          da sua confirmação.
+          da sua confirma��o.
         </div>
       </section>
 
@@ -711,8 +800,8 @@ function Configuracoes() {
             estilos.textoCinza
           }
         >
-          Este botão restaura apenas
-          as listas de opções. Ele não
+          Este bot�o restaura apenas
+          as listas de opções. Ele n�o
           apaga lançamentos financeiros.
         </p>
 
@@ -724,7 +813,7 @@ function Configuracoes() {
             estilos.botaoSecundario
           }
         >
-          Restaurar listas padrão
+          Restaurar listas padr�o
         </button>
       </section>
     </div>
@@ -770,7 +859,7 @@ function ListaConfiguracao({
           value={
             valorNovo
           }
-          placeholder="Digite uma nova opção"
+          placeholder="Digite uma nova op��o"
           onChange={(
             evento
           ) =>
@@ -814,7 +903,7 @@ function ListaConfiguracao({
               estilos.textoCinza
             }
           >
-            Nenhuma opção cadastrada.
+            Nenhuma op��o cadastrada.
           </p>
         ) : (
           itens.map(
