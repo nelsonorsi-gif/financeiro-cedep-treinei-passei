@@ -1810,7 +1810,16 @@ function App() {
               : "",
 
           formaPagamento:
-            conta.banco,
+            conta.formaPagamentoBaixa || conta.banco,
+
+          parcelasCartao:
+            conta.parcelasCartao,
+
+          taxaCartao:
+            conta.taxaCartao,
+
+          valorLiquidoCartao:
+            conta.valorLiquidoCartao,
 
           entrada:
             conta.tipo ===

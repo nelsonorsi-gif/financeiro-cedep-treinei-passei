@@ -515,6 +515,10 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
         descricao: atualizada.descricao,
         valor: valorRecebido,
         formaPagamento,
+        modalidadeCartao: cartao.modalidade ?? undefined,
+        parcelasCartao: cartao.parcelas,
+        taxaCartao: cartao.taxa,
+        valorLiquido: cartao.liquido,
         alunoId: atualizada.alunoId,
         alunoNome: atualizada.alunoNome,
       });
