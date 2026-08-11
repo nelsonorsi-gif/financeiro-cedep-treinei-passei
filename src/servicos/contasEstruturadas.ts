@@ -218,13 +218,37 @@ export async function sincronizarContasLocais({
 
   if (!permitidas.length) return;
 
-  const { error } = await banco
-    .from("contas_financeiras")
-    .upsert(
-      permitidas.map((conta) =>
-        paraBanco(conta, usuarioId)
-      ),
-      { onConflict: "id" }
-    );
-  if (error) throw error;
+  const proprias = perfil === "Secretaria"
+    ? permitidas.filter((conta) => conta.criadoPorId === usuarioId)
+    : permitidas;
+  const mensalidadesDeOutros = perfil === "Secretaria"
+    ? permitidas.filter(
+        (conta) =>
+          conta.origem === "mensalidade" &&
+          conta.criadoPorId !== usuarioId
+      )
+    : [];
+
+  if (proprias.length) {
+    const { error } = await banco
+      .from("contas_financeiras")
+      .upsert(
+        proprias.map((conta) => paraBanco(conta, usuarioId)),
+        { onConflict: "id" }
+      );
+    if (error) throw error;
+  }
+
+  for (const conta of mensalidadesDeOutros) {
+    const { data, error } = await banco
+      .from("contas_financeiras")
+      .update(paraBanco(conta, usuarioId))
+      .eq("id", conta.id)
+      .select("id")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) {
+      throw new Error(`A parcela ${conta.descricao} não pôde ser atualizada.`);
+    }
+  }
 }

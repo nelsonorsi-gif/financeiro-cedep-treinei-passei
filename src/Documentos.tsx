@@ -1154,11 +1154,19 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
         ehAlteracao: Boolean(contratosAntes[aluno.id]),
         incluirVencidas: parcelasVencidas === "gerar",
       });
+      const contasAnterioresPorId = new Map(
+        contas.map((conta) => [conta.id, conta] as const)
+      );
+      const contasParaSincronizar = contasAtualizadas.filter((conta) => {
+        if (conta.alunoId !== aluno.id) return false;
+        const anterior = contasAnterioresPorId.get(conta.id);
+        return !anterior || JSON.stringify(anterior) !== JSON.stringify(conta);
+      });
       setSalvandoContrato(true);
       setMensagemContrato("");
       try {
         await sincronizarContasLocais({
-          contas: contasAtualizadas,
+          contas: contasParaSincronizar,
           usuarioId: usuarioAtual.id,
           perfil: usuarioAtual.perfil,
         });
@@ -1168,7 +1176,18 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
         if (!salvarConfiguracaoContrato(false)) throw new Error("Não foi possível salvar os dados do contrato.");
         setMensagemContrato("Contrato e parcelas salvos no banco com sucesso.");
       } catch (erro) {
-        const detalhe = erro instanceof Error ? erro.message : "Erro desconhecido.";
+        const erroBanco = erro as {
+          message?: unknown;
+          details?: unknown;
+          hint?: unknown;
+          code?: unknown;
+        };
+        const detalhe = erro instanceof Error
+          ? erro.message
+          : [erroBanco?.message, erroBanco?.details, erroBanco?.hint, erroBanco?.code]
+              .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+              .filter((item, indice, itens) => itens.indexOf(item) === indice)
+              .join(" — ") || "O banco recusou a operação sem informar detalhes.";
         console.error("Erro ao salvar contrato e parcelas:", erro);
         setMensagemContrato(`Não foi possível salvar as parcelas: ${detalhe}`);
         alert(`Não foi possível salvar o contrato e as parcelas no banco.\n\n${detalhe}`);
