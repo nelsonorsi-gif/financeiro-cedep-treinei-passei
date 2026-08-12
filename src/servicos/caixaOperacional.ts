@@ -1,4 +1,4 @@
-﻿import type { UsuarioSessao } from "../Acesso";
+import type { UsuarioSessao } from "../Acesso";
 
 export const CHAVE_CAIXA = "financeiro-cedep-secretaria";
 export const EVENTO_CAIXA_ATUALIZADO = "financeiro-caixa-atualizado";
@@ -28,6 +28,30 @@ export type MovimentoCaixa = {
   parcelasCartao?: number;
   taxaCartao?: number;
   valorLiquido?: number;
+  historicoEdicoes?: Array<{
+    dataHora: string;
+    usuarioId: string;
+    usuarioNome: string;
+    motivo: string;
+    descricaoAnterior: string;
+    valorAnterior: number;
+    formaPagamentoAnterior: string;
+  }>;
+};
+
+export type ReaberturaCaixa = {
+  dataHora: string;
+  usuarioId: string;
+  usuarioNome: string;
+  motivo: string;
+};
+
+export type FechamentoCaixa = {
+  dataHora: string;
+  valorInformado?: number;
+  valorEsperado?: number;
+  diferenca?: number;
+  observacao?: string;
 };
 
 export type SessaoCaixaOperacional = {
@@ -41,6 +65,9 @@ export type SessaoCaixaOperacional = {
   movimentos?: MovimentoCaixa[];
   status: "Aberto" | "Fechado";
   fechamento?: string;
+  reaberturas?: ReaberturaCaixa[];
+  historicoFechamentos?: FechamentoCaixa[];
+  alteradoAposReabertura?: boolean;
 };
 
 type DadosCaixa = { sessoes: SessaoCaixaOperacional[] };
@@ -73,7 +100,7 @@ export const usuarioPodeMovimentar = (usuario: UsuarioSessao) =>
   usuario.perfil === "Administrador" || Boolean(obterCaixaAbertoDoUsuario(usuario));
 
 export const mensagemCaixaFechado =
-  "NÃ£o hÃ¡ caixa aberto para este usuÃ¡rio. Abra o caixa antes de realizar esta operaÃ§Ã£o.";
+  "Não há caixa aberto para este usuário. Abra o caixa antes de realizar esta operação.";
 
 export const registrarMovimentoCaixa = (
   usuario: UsuarioSessao,

@@ -48,6 +48,20 @@ export type SessaoCaixa = {
   valorEsperado?: number;
   diferenca?: number;
   observacaoFechamento?: string;
+  reaberturas?: Array<{
+    dataHora: string;
+    usuarioId: string;
+    usuarioNome: string;
+    motivo: string;
+  }>;
+  historicoFechamentos?: Array<{
+    dataHora: string;
+    valorInformado?: number;
+    valorEsperado?: number;
+    diferenca?: number;
+    observacao?: string;
+  }>;
+  alteradoAposReabertura?: boolean;
 };
 
 type Props = {
@@ -80,6 +94,38 @@ const converterNumero = (
     ? numero
     : 0;
 };
+
+const normalizarSessao = (sessao: SessaoCaixa): SessaoCaixa => {
+  const movimentos = [...(sessao.movimentos ?? [])];
+  const idsOrigem = new Set(movimentos.map((item) => item.origemId));
+
+  for (const recebimento of sessao.recebimentos ?? []) {
+    if (idsOrigem.has(recebimento.id)) continue;
+    movimentos.push({
+      id: `movimento-legado-${recebimento.id}`,
+      natureza: "entrada",
+      origem: "secretaria",
+      origemId: recebimento.id,
+      descricao: recebimento.descricao,
+      valor: recebimento.valor,
+      formaPagamento: recebimento.formaPagamento,
+      dataHora: recebimento.dataHora,
+      usuarioId: sessao.operadorId ?? "legado",
+      usuarioNome: sessao.operador,
+      alunoId: recebimento.alunoId,
+      alunoNome: recebimento.alunoNome,
+      modalidadeCartao: recebimento.modalidadeCartao,
+      parcelasCartao: recebimento.parcelasCartao,
+      taxaCartao: recebimento.taxaCartao,
+      valorLiquido: recebimento.valorLiquidoCartao,
+    });
+  }
+
+  return { ...sessao, movimentos };
+};
+
+const normalizarSessoes = (sessoes: SessaoCaixa[]) =>
+  sessoes.map(normalizarSessao);
 
 function Secretaria({
   usuarioAtual,
@@ -120,6 +166,7 @@ function Secretaria({
     useState("");
   const [observacaoFechamento, setObservacaoFechamento] =
     useState("");
+  const [caixaVisualizadoId, setCaixaVisualizadoId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -139,7 +186,7 @@ function Secretaria({
           Array.isArray(
             conteudo.sessoes
           )
-            ? conteudo.sessoes
+            ? normalizarSessoes(conteudo.sessoes)
             : []
         );
       }
@@ -200,7 +247,7 @@ function Secretaria({
       try {
         const salvo = localStorage.getItem(CHAVE_SECRETARIA);
         const conteudo = salvo ? JSON.parse(salvo) : null;
-        if (Array.isArray(conteudo?.sessoes)) setSessoes(conteudo.sessoes);
+        if (Array.isArray(conteudo?.sessoes)) setSessoes(normalizarSessoes(conteudo.sessoes));
       } catch (erro) {
         console.error("Erro ao atualizar caixa:", erro);
       }
@@ -215,26 +262,37 @@ function Secretaria({
         (item.operadorId === usuarioAtual.id || (!item.operadorId && item.operador === usuarioAtual.nome))
     ) ?? null;
 
-  const totalRecebido =
-    caixaAberto?.recebimentos.reduce(
-      (total, item) =>
-        total + item.valor,
-      0
-    ) ?? 0;
+  const caixaVisualizado =
+    (caixaVisualizadoId
+      ? sessoes.find((item) => item.id === caixaVisualizadoId)
+      : null) ?? caixaAberto;
 
-  const totaisMovimento = caixaAberto?.movimentos?.length
-    ? totaisDaSessao(caixaAberto)
+  const movimentosVisualizados = caixaVisualizado?.movimentos ?? [];
+  const totaisMovimento = caixaVisualizado
+    ? totaisDaSessao(caixaVisualizado)
     : null;
-  const valorEsperado = totaisMovimento?.saldoEsperado ??
-    ((caixaAberto?.valorInicial ?? 0) + totalRecebido);
-  const resumoFormas = (caixaAberto?.movimentos ?? []).reduce<Record<string, number>>(
-    (totais, movimento) => {
-      const sinal = movimento.natureza === "entrada" || movimento.natureza === "estorno_saida" ? 1 : -1;
-      totais[movimento.formaPagamento] = (totais[movimento.formaPagamento] ?? 0) + sinal * movimento.valor;
-      return totais;
-    }, {}
-  );
+  const valorEsperado = caixaAberto
+    ? totaisDaSessao(caixaAberto).saldoEsperado
+    : 0;
+  const totalRecebido = caixaAberto
+    ? (caixaAberto.movimentos ?? [])
+        .filter((item) => item.natureza === "entrada")
+        .reduce((total, item) => total + item.valor, 0)
+    : 0;
 
+  const resumoFormas = movimentosVisualizados.reduce<
+    Record<string, { entradas: number; saidas: number }>
+  >((totais, movimento) => {
+    const forma = movimento.formaPagamento || "Não informado";
+    const atual = totais[forma] ?? { entradas: 0, saidas: 0 };
+    if (movimento.natureza === "entrada" || movimento.natureza === "estorno_saida") {
+      atual.entradas += movimento.valor;
+    } else {
+      atual.saidas += movimento.valor;
+    }
+    totais[forma] = atual;
+    return totais;
+  }, {});
   const alunosAtivos = useMemo(
     () =>
       alunos
@@ -290,6 +348,7 @@ function Secretaria({
       ...atuais,
       sessao,
     ]);
+    setCaixaVisualizadoId(null);
     setValorInicial("0,00");
     alert("Caixa aberto.");
   };
@@ -342,20 +401,6 @@ function Secretaria({
       valorLiquidoCartao: cartao.liquido,
     };
 
-    setSessoes((atuais) =>
-      atuais.map((item) =>
-        item.id === caixaAberto.id
-          ? {
-              ...item,
-              recebimentos: [
-                ...item.recebimentos,
-                recebimento,
-              ],
-            }
-          : item
-      )
-    );
-
     registrarMovimentoCaixa(usuarioAtual, {
       natureza: "entrada", origem: "secretaria", origemId: recebimento.id,
       descricao: recebimento.descricao, valor: recebimento.valor,
@@ -373,6 +418,116 @@ function Secretaria({
     alert(
       "Recebimento registrado no caixa e no financeiro."
     );
+  };
+
+  const reabrirCaixa = (sessao: SessaoCaixa) => {
+    const pertenceAoUsuario =
+      sessao.operadorId === usuarioAtual.id ||
+      (!sessao.operadorId && sessao.operador === usuarioAtual.nome);
+
+    if (!pertenceAoUsuario) {
+      alert("Somente o operador responsável pode reabrir este caixa.");
+      return;
+    }
+    if (caixaAberto) {
+      alert("Feche o caixa atualmente aberto antes de reabrir outro.");
+      return;
+    }
+
+    const motivo = window.prompt(
+      "Informe o motivo da reabertura. Esta ação ficará registrada no histórico:"
+    )?.trim();
+    if (!motivo) return;
+    if (!window.confirm("Atenção: este caixa será reaberto para correções e deverá ser fechado novamente. Continuar?")) {
+      return;
+    }
+
+    const agora = new Date().toISOString();
+    setSessoes((atuais) =>
+      atuais.map((item) =>
+        item.id === sessao.id
+          ? {
+              ...item,
+              status: "Aberto",
+              fechamento: undefined,
+              valorInformado: undefined,
+              valorEsperado: undefined,
+              diferenca: undefined,
+              observacaoFechamento: undefined,
+              alteradoAposReabertura: false,
+              reaberturas: [
+                ...(item.reaberturas ?? []),
+                {
+                  dataHora: agora,
+                  usuarioId: usuarioAtual.id,
+                  usuarioNome: usuarioAtual.nome,
+                  motivo,
+                },
+              ],
+            }
+          : item
+      )
+    );
+    setCaixaVisualizadoId(null);
+    alert("Atenção: caixa reaberto. Todas as alterações serão registradas.");
+  };
+
+  const editarMovimento = (movimento: MovimentoCaixa) => {
+    if (!caixaAberto) return;
+    const motivo = window.prompt("Informe o motivo da edição:")?.trim();
+    if (!motivo) return;
+    const novaDescricao = window.prompt("Descrição:", movimento.descricao)?.trim();
+    if (!novaDescricao) return;
+    const novoValorTexto = window.prompt(
+      "Valor:",
+      movimento.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })
+    );
+    if (novoValorTexto === null) return;
+    const novoValor = converterNumero(novoValorTexto);
+    if (novoValor <= 0) {
+      alert("Informe um valor válido.");
+      return;
+    }
+    const novaForma = window.prompt(
+      "Forma de pagamento:",
+      movimento.formaPagamento
+    )?.trim();
+    if (!novaForma) return;
+
+    setSessoes((atuais) =>
+      atuais.map((sessao) =>
+        sessao.id === caixaAberto.id
+          ? {
+              ...sessao,
+              alteradoAposReabertura:
+                Boolean(sessao.reaberturas?.length) || sessao.alteradoAposReabertura,
+              movimentos: (sessao.movimentos ?? []).map((item) =>
+                item.id === movimento.id
+                  ? {
+                      ...item,
+                      descricao: novaDescricao,
+                      valor: novoValor,
+                      formaPagamento: novaForma,
+                      historicoEdicoes: [
+                        ...(item.historicoEdicoes ?? []),
+                        {
+                          dataHora: new Date().toISOString(),
+                          usuarioId: usuarioAtual.id,
+                          usuarioNome: usuarioAtual.nome,
+                          motivo,
+                          descricaoAnterior: item.descricao,
+                          valorAnterior: item.valor,
+                          formaPagamentoAnterior: item.formaPagamento,
+                        },
+                      ],
+                    }
+                  : item
+              ),
+            }
+          : sessao
+      )
+    );
+    alert("Movimento atualizado e alteração registrada no histórico.");
   };
 
   const fecharCaixa = () => {
@@ -407,28 +562,39 @@ function Secretaria({
       return;
     }
 
+    const fechamentoEm = new Date().toISOString();
     setSessoes((atuais) =>
       atuais.map((item) =>
         item.id === caixaAberto.id
           ? {
               ...item,
               status: "Fechado",
-              fechamento:
-                new Date().toISOString(),
-              valorInformado:
-                informado,
+              fechamento: fechamentoEm,
+              valorInformado: informado,
               valorEsperado,
               diferenca,
-              observacaoFechamento:
-                observacaoFechamento.trim(),
+              observacaoFechamento: observacaoFechamento.trim(),
+              historicoFechamentos: [
+                ...(item.historicoFechamentos ?? []),
+                {
+                  dataHora: fechamentoEm,
+                  valorInformado: informado,
+                  valorEsperado,
+                  diferenca,
+                  observacao: observacaoFechamento.trim(),
+                },
+              ],
             }
           : item
       )
     );
-
     setValorFechamento("");
     setObservacaoFechamento("");
-    alert("Caixa fechado.");
+    alert(
+      caixaAberto.reaberturas?.length
+        ? "Caixa reaberto, alterado e fechado novamente. O alerta foi registrado no histórico."
+        : "Caixa fechado."
+    );
   };
 
   return (
@@ -648,81 +814,141 @@ function Secretaria({
             </div>
           </section>
 
-          <section
-            style={{
-              ...estilos.caixa,
-              marginTop: 25,
-            }}
-          >
-            <h2>
-              Recebimentos do caixa
-            </h2>
-            {caixaAberto.recebimentos
-              .length === 0 ? (
-              <Vazio />
-            ) : (
-              caixaAberto.recebimentos.map(
-                (item) => (
-                  <div
-                    key={item.id}
-                    style={
-                      estilos.registro
-                    }
-                  >
-                    <div>
-                      <strong>
-                        {
-                          item.alunoNome
-                        }
-                      </strong>
-                      <div
-                        style={
-                          estilos.textoCinza
-                        }
-                      >
-                        {
-                          item.descricao
-                        }{" "}
-                        •{" "}
-                        {
-                          item.formaPagamento
-                        }
-                      </div>
-                    </div>
-                    <strong>
-                      {moeda(
-                        item.valor
-                      )}
-                    </strong>
-                  </div>
-                )
-              )
-            )}
-          </section>
-        </>
+          </>
       )}
 
-          {Object.keys(resumoFormas).length > 0 && (
-            <section style={{ ...estilos.caixa, marginTop: 25 }}>
-              <h2>Conferência por forma de pagamento</h2>
-              {Object.entries(resumoFormas).map(([forma, total]) => (
-                <div key={forma} style={estilos.registro}>
-                  <strong>{forma}</strong>
-                  <strong>{moeda(total)}</strong>
-                </div>
-              ))}
-              {totaisMovimento && (
-                <>
-                  <div style={estilos.registro}><span>Entradas</span><strong>{moeda(totaisMovimento.entradas)}</strong></div>
-                  <div style={estilos.registro}><span>Saídas</span><strong>{moeda(totaisMovimento.saidas)}</strong></div>
-                  <div style={estilos.registro}><span>Estornos de entradas</span><strong>{moeda(totaisMovimento.estornosEntradas)}</strong></div>
-                  <div style={estilos.registro}><span>Estornos de saídas</span><strong>{moeda(totaisMovimento.estornosSaidas)}</strong></div>
-                  <div style={estilos.registro}><span>Taxas de cartão</span><strong>{moeda((caixaAberto?.movimentos ?? []).reduce((total, movimento) => total + (movimento.taxaCartao ?? 0), 0))}</strong></div>
-                  <div style={estilos.registro}><span>Cartões líquido previsto</span><strong>{moeda((caixaAberto?.movimentos ?? []).reduce((total, movimento) => total + (movimento.valorLiquido ?? 0), 0))}</strong></div>
-                </>
-              )}
-            </section>
+      {caixaVisualizado && (
+        <section style={{ ...estilos.caixa, marginTop: 25 }}>
+          <div style={estilos.tituloRelatorio}>
+            <div>
+              <h2 style={{ marginBottom: 6 }}>Movimentação completa do caixa</h2>
+              <div style={estilos.textoCinza}>
+                {caixaVisualizado.operador} • {caixaVisualizado.unidade} • aberto em{" "}
+                {new Date(caixaVisualizado.abertura).toLocaleString("pt-BR")}
+              </div>
+            </div>
+            {caixaVisualizado.reaberturas?.length ? (
+              <span style={estilos.alertaReabertura}>
+                Caixa reaberto {caixaVisualizado.alteradoAposReabertura ? "e alterado" : ""}
+              </span>
+            ) : null}
+          </div>
+
+          {movimentosVisualizados.length === 0 ? (
+            <Vazio />
+          ) : (
+            <div style={estilos.tabelaContainer}>
+              <table style={estilos.tabela}>
+                <thead>
+                  <tr>
+                    <th style={estilos.th}>Data e hora</th>
+                    <th style={estilos.th}>Descrição</th>
+                    <th style={estilos.th}>Tipo de entrada</th>
+                    <th style={estilos.th}>Tipo de saída</th>
+                    <th style={estilos.th}>Forma de pagamento</th>
+                    <th style={estilos.th}>Entrada</th>
+                    <th style={estilos.th}>Saída</th>
+                    <th style={estilos.th}>Unidade</th>
+                    {caixaAberto?.id === caixaVisualizado.id && <th style={estilos.th}>Ações</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...movimentosVisualizados]
+                    .sort((a, b) => a.dataHora.localeCompare(b.dataHora))
+                    .map((movimento) => {
+                      const entrada =
+                        movimento.natureza === "entrada" ||
+                        movimento.natureza === "estorno_saida";
+                      const tipo = movimento.natureza.startsWith("estorno")
+                        ? movimento.natureza === "estorno_entrada"
+                          ? "Estorno de entrada"
+                          : "Estorno de saída"
+                        : movimento.origem.replaceAll("_", " ");
+                      return (
+                        <tr key={movimento.id}>
+                          <td style={estilos.td}>{new Date(movimento.dataHora).toLocaleString("pt-BR")}</td>
+                          <td style={estilos.td}>
+                            <strong>{movimento.descricao}</strong>
+                            {movimento.alunoNome && <div style={estilos.textoCinza}>{movimento.alunoNome}</div>}
+                            {movimento.motivoEstorno && <div style={estilos.textoEstorno}>Motivo: {movimento.motivoEstorno}</div>}
+                            {movimento.historicoEdicoes?.length ? (
+                              <div style={estilos.textoAlerta}>Editado com histórico</div>
+                            ) : null}
+                          </td>
+                          <td style={estilos.td}>{entrada ? tipo : ""}</td>
+                          <td style={estilos.td}>{entrada ? "" : tipo}</td>
+                          <td style={estilos.td}>{movimento.formaPagamento}</td>
+                          <td style={{ ...estilos.td, color: "#166534", fontWeight: 700 }}>
+                            {entrada ? moeda(movimento.valor) : ""}
+                          </td>
+                          <td style={{ ...estilos.td, color: "#b91c1c", fontWeight: 700 }}>
+                            {!entrada ? moeda(movimento.valor) : ""}
+                          </td>
+                          <td style={estilos.td}>{caixaVisualizado.unidade}</td>
+                          {caixaAberto?.id === caixaVisualizado.id && (
+                            <td style={estilos.td}>
+                              <button style={estilos.botaoSecundario} onClick={() => editarMovimento(movimento)}>
+                                Editar
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
           )}
+
+          <div style={estilos.resumoGrid}>
+            <div>
+              <h3>Resumo por forma de pagamento</h3>
+              <div style={estilos.tabelaContainer}>
+                <table style={estilos.tabela}>
+                  <thead>
+                    <tr>
+                      <th style={estilos.th}>Forma</th>
+                      <th style={estilos.th}>Entradas</th>
+                      <th style={estilos.th}>Saídas</th>
+                      <th style={estilos.th}>Líquido</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(resumoFormas).map(([forma, totais]) => (
+                      <tr key={forma}>
+                        <td style={estilos.td}><strong>{forma}</strong></td>
+                        <td style={{ ...estilos.td, color: "#166534" }}>{moeda(totais.entradas)}</td>
+                        <td style={{ ...estilos.td, color: "#b91c1c" }}>{moeda(totais.saidas)}</td>
+                        <td style={estilos.td}>{moeda(totais.entradas - totais.saidas)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {totaisMovimento && (
+              <div style={estilos.resumoFinal}>
+                <h3>Resumo final</h3>
+                <div style={estilos.registro}><span>Saldo inicial</span><strong>{moeda(caixaVisualizado.valorInicial)}</strong></div>
+                <div style={estilos.registro}><span>Total de entradas</span><strong style={{ color: "#166534" }}>{moeda(totaisMovimento.entradas)}</strong></div>
+                <div style={estilos.registro}><span>Total de saídas</span><strong style={{ color: "#b91c1c" }}>{moeda(totaisMovimento.saidas)}</strong></div>
+                <div style={estilos.registro}><span>Estornos de entradas</span><strong style={{ color: "#b91c1c" }}>{moeda(totaisMovimento.estornosEntradas)}</strong></div>
+                <div style={estilos.registro}><span>Estornos de saídas</span><strong style={{ color: "#166534" }}>{moeda(totaisMovimento.estornosSaidas)}</strong></div>
+                <div style={estilos.registro}><span>Taxas de cartão</span><strong>{moeda(movimentosVisualizados.reduce((total, item) => total + (item.taxaCartao ?? 0), 0))}</strong></div>
+                <div style={estilos.totalGeral}><span>Saldo esperado</span><strong>{moeda(totaisMovimento.saldoEsperado)}</strong></div>
+                {caixaVisualizado.valorInformado !== undefined && (
+                  <>
+                    <div style={estilos.registro}><span>Valor informado</span><strong>{moeda(caixaVisualizado.valorInformado)}</strong></div>
+                    <div style={estilos.registro}><span>Diferença</span><strong>{moeda(caixaVisualizado.diferenca ?? 0)}</strong></div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       <section
         style={{
           ...estilos.caixa,
@@ -800,6 +1026,28 @@ function Secretaria({
                       )}
                     </strong>
                   )}
+                  {item.reaberturas?.length ? (
+                    <div style={estilos.textoAlerta}>
+                      Reaberto {item.reaberturas.length} vez(es)
+                      {item.alteradoAposReabertura ? " • alterado após reabertura" : ""}
+                    </div>
+                  ) : null}
+                  <div style={estilos.acoesHistorico}>
+                    <button
+                      style={estilos.botaoSecundario}
+                      onClick={() => setCaixaVisualizadoId(item.id)}
+                    >
+                      Ver movimentação
+                    </button>
+                    {item.status === "Fechado" && (
+                      <button
+                        style={estilos.botaoAlerta}
+                        onClick={() => reabrirCaixa(item)}
+                      >
+                        Reabrir caixa
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))
@@ -1044,6 +1292,89 @@ const estilos: Record<
     color: "#166534",
     fontSize: 13,
     fontWeight: "bold",
+  },
+  tituloRelatorio: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 16,
+    flexWrap: "wrap",
+    marginBottom: 20,
+  },
+  alertaReabertura: {
+    padding: "9px 12px",
+    borderRadius: 9,
+    color: "#92400e",
+    background: "#fef3c7",
+    border: "1px solid #f59e0b",
+    fontWeight: 700,
+  },
+  tabelaContainer: { overflowX: "auto" },
+  tabela: { width: "100%", borderCollapse: "collapse", minWidth: 760 },
+  th: {
+    padding: "12px 10px",
+    background: "#111827",
+    color: "white",
+    textAlign: "left",
+    whiteSpace: "nowrap",
+    fontSize: 13,
+  },
+  td: {
+    padding: "12px 10px",
+    borderBottom: "1px solid #e5e7eb",
+    verticalAlign: "top",
+    fontSize: 14,
+  },
+  resumoGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
+    gap: 24,
+    marginTop: 28,
+    alignItems: "start",
+  },
+  resumoFinal: {
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: 12,
+    padding: 18,
+  },
+  totalGeral: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 15,
+    padding: "16px 12px",
+    marginTop: 8,
+    background: "#111827",
+    color: "white",
+    borderRadius: 8,
+    fontSize: 17,
+  },
+  textoEstorno: { color: "#b91c1c", fontSize: 12, marginTop: 4 },
+  textoAlerta: { color: "#92400e", fontSize: 12, marginTop: 4, fontWeight: 700 },
+  acoesHistorico: {
+    display: "flex",
+    gap: 8,
+    marginTop: 10,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  botaoSecundario: {
+    background: "#e2e8f0",
+    color: "#0f172a",
+    border: "none",
+    borderRadius: 7,
+    padding: "8px 11px",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  botaoAlerta: {
+    background: "#f59e0b",
+    color: "#422006",
+    border: "none",
+    borderRadius: 7,
+    padding: "8px 11px",
+    cursor: "pointer",
+    fontWeight: 700,
   },
   vazio: {
     padding: 30,

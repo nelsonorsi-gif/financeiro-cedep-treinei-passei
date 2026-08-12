@@ -57,6 +57,34 @@ export const resumirAlteracaoContrato = (
     : "Contrato revisado sem mudança financeira.";
 };
 
+const campoObservacao = (observacao: string | undefined, campo: string) => {
+  const trecho = observacao
+    ?.split("|")
+    .map((item) => item.trim())
+    .find((item) => item.toLocaleLowerCase("pt-BR").startsWith(campo.toLocaleLowerCase("pt-BR") + ":"));
+  return trecho?.slice(trecho.indexOf(":") + 1).trim().toLocaleLowerCase("pt-BR") ?? "";
+};
+
+export const anoLetivoDaParcela = (conta: Conta) =>
+  campoObservacao(conta.observacao, "Ano letivo");
+
+const chaveParcelaContrato = (conta: Conta) => [
+  conta.alunoId ?? "",
+  anoLetivoDaParcela(conta),
+  campoObservacao(conta.observacao, "Curso"),
+  conta.vencimento,
+].join("|");
+
+const preferirParcela = (atual: Conta, candidata: Conta) => {
+  const atualPago = (atual.valorPago ?? 0) > 0 || atual.status === "Recebido" || atual.status === "Pago";
+  const candidataPaga = (candidata.valorPago ?? 0) > 0 || candidata.status === "Recebido" || candidata.status === "Pago";
+  if (candidataPaga && !atualPago) return candidata;
+  if (atualPago && !candidataPaga) return atual;
+  return String(atual.criadoEm ?? "").localeCompare(String(candidata.criadoEm ?? "")) <= 0
+    ? atual
+    : candidata;
+};
+
 export const recalcularParcelasFuturas = ({
   contas,
   novasParcelas,
@@ -74,32 +102,78 @@ export const recalcularParcelasFuturas = ({
   ehAlteracao: boolean;
   incluirVencidas?: boolean;
 }) => {
-  const parcelasIncluidas = novasParcelas.filter(
+  const agora = new Date().toISOString();
+  const candidatas = novasParcelas.filter(
     (conta) => incluirVencidas || conta.vencimento >= hoje
   );
+  const candidatasUnicas = Array.from(
+    new Map(candidatas.map((conta) => [chaveParcelaContrato(conta), conta])).values()
+  );
+  const existentesDoAluno = contas.filter(
+    (conta) =>
+      conta.alunoId === alunoId &&
+      conta.tipo === "receber" &&
+      conta.origem === "mensalidade"
+  );
+  const existentesPorChave = new Map<string, Conta>();
+  existentesDoAluno
+    .filter((conta) => conta.status !== "Cancelado")
+    .forEach((conta) => {
+      const chave = chaveParcelaContrato(conta);
+      const atual = existentesPorChave.get(chave);
+      existentesPorChave.set(chave, atual ? preferirParcela(atual, conta) : conta);
+    });
 
-  if (!ehAlteracao) {
-    const ids = new Set(parcelasIncluidas.map((conta) => conta.id));
-    return [...contas.filter((conta) => !ids.has(conta.id)), ...parcelasIncluidas];
-  }
+  const idsMantidos = new Set<string>();
+  const parcelasFinais = candidatasUnicas.map((nova) => {
+    const existente = existentesPorChave.get(chaveParcelaContrato(nova));
+    if (!existente) return nova;
+    idsMantidos.add(existente.id);
+    const protegida = (existente.valorPago ?? 0) > 0 || existente.status === "Recebido" || existente.status === "Pago";
+    if (protegida) return existente;
+    return {
+      ...nova,
+      id: existente.id,
+      criadoEm: existente.criadoEm,
+      criadoPorId: existente.criadoPorId,
+      criadoPorNome: existente.criadoPorNome,
+      criadoPorPerfil: existente.criadoPorPerfil,
+      atualizadoEm: agora,
+      atualizadoPorId: usuarioId,
+    };
+  });
 
-  const agora = new Date().toISOString();
+  const parcelasFinaisPorId = new Map(
+    parcelasFinais.map((conta) => [conta.id, conta] as const)
+  );
+  const substituidas = new Set(
+    candidatasUnicas.map((conta) => chaveParcelaContrato(conta))
+  );
   const preservadas = contas.map((conta): Conta => {
-    const pertence = conta.alunoId === alunoId && conta.tipo === "receber" && conta.observacao?.includes(`Contrato: ${alunoId}`);
-    const podeSubstituir = pertence && conta.status === "Pendente" && conta.vencimento >= hoje;
-    if (!podeSubstituir) return conta;
+    const pertence = conta.alunoId === alunoId && conta.tipo === "receber" && conta.origem === "mensalidade";
+    if (!pertence) return conta;
+    if (idsMantidos.has(conta.id)) return parcelasFinaisPorId.get(conta.id) ?? conta;
+
+    const duplicadaAtiva = substituidas.has(chaveParcelaContrato(conta)) && conta.status !== "Cancelado";
+    const deveCancelar =
+      conta.status === "Pendente" &&
+      (duplicadaAtiva || (ehAlteracao && conta.vencimento >= hoje));
+    if (!deveCancelar) return conta;
 
     return {
       ...conta,
       status: "Cancelado",
       atualizadoEm: agora,
       atualizadoPorId: usuarioId,
-      observacao: `${conta.observacao} | Cancelada por alteração contratual`,
+      observacao: conta.observacao.includes("Cancelada por alteração contratual")
+        ? conta.observacao
+        : `${conta.observacao} | Cancelada por alteração contratual`,
     };
   });
 
+  const idsExistentes = new Set(preservadas.map((conta) => conta.id));
   return [
     ...preservadas,
-    ...parcelasIncluidas,
+    ...parcelasFinais.filter((conta) => !idsExistentes.has(conta.id)),
   ];
 };

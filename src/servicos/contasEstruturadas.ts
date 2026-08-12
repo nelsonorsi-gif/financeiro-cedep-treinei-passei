@@ -218,28 +218,27 @@ export async function sincronizarContasLocais({
 
   if (!permitidas.length) return;
 
-  const proprias = perfil === "Secretaria"
-    ? permitidas.filter((conta) => conta.criadoPorId === usuarioId)
-    : permitidas;
-  const mensalidadesDeOutros = perfil === "Secretaria"
-    ? permitidas.filter(
-        (conta) =>
-          conta.origem === "mensalidade" &&
-          conta.criadoPorId !== usuarioId
-      )
-    : [];
+  const ids = permitidas.map((conta) => conta.id);
+  const { data: existentes, error: erroConsulta } = await banco
+    .from("contas_financeiras")
+    .select("id")
+    .in("id", ids);
+  if (erroConsulta) throw erroConsulta;
 
-  if (proprias.length) {
+  const idsExistentes = new Set(
+    (existentes ?? []).map((registro) => String(registro.id))
+  );
+  const novas = permitidas.filter((conta) => !idsExistentes.has(conta.id));
+  const atualizacoes = permitidas.filter((conta) => idsExistentes.has(conta.id));
+
+  if (novas.length) {
     const { error } = await banco
       .from("contas_financeiras")
-      .upsert(
-        proprias.map((conta) => paraBanco(conta, usuarioId)),
-        { onConflict: "id" }
-      );
+      .insert(novas.map((conta) => paraBanco(conta, usuarioId)));
     if (error) throw error;
   }
 
-  for (const conta of mensalidadesDeOutros) {
+  for (const conta of atualizacoes) {
     const { data, error } = await banco
       .from("contas_financeiras")
       .update(paraBanco(conta, usuarioId))

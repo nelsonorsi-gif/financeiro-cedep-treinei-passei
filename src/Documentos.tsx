@@ -19,6 +19,7 @@ import {
 
 import { CHAVE_MENSALIDADES } from "./Mensalidades";
 import {
+  anoLetivoDaParcela,
   recalcularParcelasFuturas,
   resumirAlteracaoContrato,
   type RegistroContrato,
@@ -701,6 +702,7 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
 
   const [alunoCarne, setAlunoCarne] =
     useState("");
+  const [anoLetivoCarne, setAnoLetivoCarne] = useState("Todos");
   const [
     parcelasPorFolha,
     setParcelasPorFolha,
@@ -980,12 +982,20 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
     }
   }, [alunos, buscaContrato, versaoContratos]);
 
-  const contasCarne = useMemo(() => {
-    const aluno = alunos.find(
-      (item) =>
-        item.id === alunoCarne
-    );
+  const anosLetivosCarne = useMemo(() => {
+    if (!alunoCarne) return [];
+    return Array.from(
+      new Set(
+        contas
+          .filter((item) => item.alunoId === alunoCarne && item.origem === "mensalidade")
+          .map(anoLetivoDaParcela)
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+  }, [alunoCarne, contas]);
 
+  const contasCarne = useMemo(() => {
+    const aluno = alunos.find((item) => item.id === alunoCarne);
     if (!aluno) return [];
 
     return contas
@@ -993,23 +1003,13 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
         (item) =>
           item.tipo === "receber" &&
           item.status !== "Cancelado" &&
-          (item.observacao?.includes(
-            `Aluno: ${aluno.nome}`
-          ) ||
-            item.descricao.includes(
-              aluno.nome
-            ))
+          (item.alunoId === aluno.id ||
+            item.observacao?.includes(`Aluno: ${aluno.nome}`) ||
+            item.descricao.includes(aluno.nome)) &&
+          (anoLetivoCarne === "Todos" || anoLetivoDaParcela(item) === anoLetivoCarne)
       )
-      .sort((a, b) =>
-        a.vencimento.localeCompare(
-          b.vencimento
-        )
-      );
-  }, [
-    alunoCarne,
-    alunos,
-    contas,
-  ]);
+      .sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+  }, [alunoCarne, alunos, anoLetivoCarne, contas]);
 
   const gerarContrato = async (atualizarParcelas = true) => {
     const aluno = alunos.find(
@@ -2245,9 +2245,19 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
                   rotulo: item.nome,
                 })
               )}
-              onChange={
-                setAlunoCarne
-              }
+              onChange={(alunoId) => {
+                setAlunoCarne(alunoId);
+                setAnoLetivoCarne("Todos");
+              }}
+            />
+            <CampoSelect
+              label="Ano letivo das parcelas"
+              value={anoLetivoCarne}
+              opcoes={[
+                { valor: "Todos", rotulo: "Todos os anos letivos" },
+                ...anosLetivosCarne.map((ano) => ({ valor: ano, rotulo: ano })),
+              ]}
+              onChange={setAnoLetivoCarne}
             />
             <CampoSelect
               label="Formato de impressão"
