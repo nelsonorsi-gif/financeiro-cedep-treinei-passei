@@ -31,6 +31,8 @@ export type RecebimentoCaixa = {
   parcelasCartao?: number;
   taxaCartao?: number;
   valorLiquidoCartao?: number;
+  caixaId?: string;
+  movimentoCaixaId?: string;
 };
 
 export type SessaoCaixa = {
@@ -401,15 +403,17 @@ function Secretaria({
       valorLiquidoCartao: cartao.liquido,
     };
 
-    registrarMovimentoCaixa(usuarioAtual, {
+    const movimentoRegistrado = registrarMovimentoCaixa(usuarioAtual, {
       natureza: "entrada", origem: "secretaria", origemId: recebimento.id,
       descricao: recebimento.descricao, valor: recebimento.valor,
       formaPagamento: recebimento.formaPagamento, modalidadeCartao: recebimento.modalidadeCartao, parcelasCartao: recebimento.parcelasCartao, taxaCartao: recebimento.taxaCartao, valorLiquido: recebimento.valorLiquidoCartao, alunoId: recebimento.alunoId, alunoNome: recebimento.alunoNome,
     });
 
-    onRegistrarReceita(
-      recebimento
-    );
+    onRegistrarReceita({
+      ...recebimento,
+      caixaId: "caixaId" in movimentoRegistrado ? movimentoRegistrado.caixaId : undefined,
+      movimentoCaixaId: movimentoRegistrado.id,
+    });
 
     setAlunoId("");
     setDescricao("Mensalidade");
@@ -528,6 +532,131 @@ function Secretaria({
       )
     );
     alert("Movimento atualizado e alteração registrada no histórico.");
+  };
+
+  const imprimirRelatorioCaixa = () => {
+    if (!caixaVisualizado || !totaisMovimento) return;
+
+    const escapar = (valor: unknown) =>
+      String(valor ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+
+    const linhas = [...movimentosVisualizados]
+      .sort((a, b) => a.dataHora.localeCompare(b.dataHora))
+      .map((movimento) => {
+        const entrada =
+          movimento.natureza === "entrada" ||
+          movimento.natureza === "estorno_saida";
+        const tipo = movimento.natureza.startsWith("estorno")
+          ? movimento.natureza === "estorno_entrada"
+            ? "Estorno de entrada"
+            : "Estorno de saída"
+          : movimento.origem.replaceAll("_", " ");
+        const detalhes = [
+          movimento.alunoNome,
+          movimento.motivoEstorno ? "Motivo: " + movimento.motivoEstorno : "",
+        ].filter(Boolean).map(escapar).join("<br>");
+        return `<tr>
+          <td>${escapar(new Date(movimento.dataHora).toLocaleString("pt-BR"))}</td>
+          <td><strong>${escapar(movimento.descricao)}</strong>${detalhes ? "<br>" + detalhes : ""}</td>
+          <td>${entrada ? escapar(tipo) : ""}</td>
+          <td>${entrada ? "" : escapar(tipo)}</td>
+          <td>${escapar(movimento.formaPagamento)}</td>
+          <td class="entrada">${entrada ? escapar(moeda(movimento.valor)) : ""}</td>
+          <td class="saida">${!entrada ? escapar(moeda(movimento.valor)) : ""}</td>
+          <td>${escapar(caixaVisualizado.unidade)}</td>
+        </tr>`;
+      })
+      .join("");
+
+    const formas = Object.entries(resumoFormas)
+      .map(([forma, totais]) => `<tr>
+        <td><strong>${escapar(forma)}</strong></td>
+        <td class="entrada">${escapar(moeda(totais.entradas))}</td>
+        <td class="saida">${escapar(moeda(totais.saidas))}</td>
+        <td>${escapar(moeda(totais.entradas - totais.saidas))}</td>
+      </tr>`)
+      .join("");
+
+    const janela = window.open("", "_blank", "noopener,noreferrer");
+    if (!janela) {
+      alert("O navegador bloqueou a janela de impressão. Autorize pop-ups para este site.");
+      return;
+    }
+
+    janela.document.write(`<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Relatório de caixa - ${escapar(caixaVisualizado.operador)}</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: #111827; font-family: Arial, sans-serif; font-size: 8.5pt; }
+  h1 { margin: 0 0 3px; font-size: 16pt; }
+  h2 { margin: 12px 0 5px; font-size: 11pt; }
+  .meta { margin-bottom: 9px; color: #475569; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th { background: #111827; color: white; padding: 5px 4px; text-align: left; font-size: 7.5pt; }
+  td { border: 1px solid #cbd5e1; padding: 4px; vertical-align: top; overflow-wrap: anywhere; }
+  .movimentos th:nth-child(1), .movimentos td:nth-child(1) { width: 12%; }
+  .movimentos th:nth-child(2), .movimentos td:nth-child(2) { width: 24%; }
+  .movimentos th:nth-child(3), .movimentos td:nth-child(3),
+  .movimentos th:nth-child(4), .movimentos td:nth-child(4) { width: 11%; }
+  .movimentos th:nth-child(5), .movimentos td:nth-child(5) { width: 13%; }
+  .movimentos th:nth-child(6), .movimentos td:nth-child(6),
+  .movimentos th:nth-child(7), .movimentos td:nth-child(7) { width: 10%; white-space: nowrap; }
+  .movimentos th:nth-child(8), .movimentos td:nth-child(8) { width: 9%; }
+  .entrada { color: #166534; font-weight: 700; }
+  .saida { color: #b91c1c; font-weight: 700; }
+  .resumos { display: grid; grid-template-columns: 1.25fr 1fr; gap: 8mm; margin-top: 10px; break-inside: avoid; }
+  .totais { border: 1px solid #cbd5e1; padding: 7px; }
+  .linha { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding: 4px 0; }
+  .geral { margin-top: 5px; padding: 6px; background: #111827; color: white; font-size: 10pt; }
+  .rodape { margin-top: 8px; color: #64748b; font-size: 7.5pt; text-align: right; }
+  @media print { .no-print { display: none; } }
+</style>
+</head>
+<body>
+  <h1>Relatório de movimentação do caixa</h1>
+  <div class="meta">
+    Operador: <strong>${escapar(caixaVisualizado.operador)}</strong> |
+    Unidade: <strong>${escapar(caixaVisualizado.unidade)}</strong> |
+    Abertura: ${escapar(new Date(caixaVisualizado.abertura).toLocaleString("pt-BR"))}
+    ${caixaVisualizado.fechamento ? " | Fechamento: " + escapar(new Date(caixaVisualizado.fechamento).toLocaleString("pt-BR")) : ""}
+  </div>
+  <table class="movimentos">
+    <thead><tr><th>Data e hora</th><th>Descrição</th><th>Tipo de entrada</th><th>Tipo de saída</th><th>Forma de pagamento</th><th>Entrada</th><th>Saída</th><th>Unidade</th></tr></thead>
+    <tbody>${linhas || '<tr><td colspan="8">Nenhuma movimentação.</td></tr>'}</tbody>
+  </table>
+  <div class="resumos">
+    <div>
+      <h2>Resumo por forma de pagamento</h2>
+      <table><thead><tr><th>Forma</th><th>Entradas</th><th>Saídas</th><th>Líquido</th></tr></thead><tbody>${formas}</tbody></table>
+    </div>
+    <div>
+      <h2>Resumo final</h2>
+      <div class="totais">
+        <div class="linha"><span>Saldo inicial</span><strong>${escapar(moeda(caixaVisualizado.valorInicial))}</strong></div>
+        <div class="linha"><span>Total de entradas</span><strong class="entrada">${escapar(moeda(totaisMovimento.entradas))}</strong></div>
+        <div class="linha"><span>Total de saídas</span><strong class="saida">${escapar(moeda(totaisMovimento.saidas))}</strong></div>
+        <div class="linha"><span>Estornos de entradas</span><strong class="saida">${escapar(moeda(totaisMovimento.estornosEntradas))}</strong></div>
+        <div class="linha"><span>Estornos de saídas</span><strong class="entrada">${escapar(moeda(totaisMovimento.estornosSaidas))}</strong></div>
+        <div class="geral linha"><span>Saldo esperado</span><strong>${escapar(moeda(totaisMovimento.saldoEsperado))}</strong></div>
+        ${caixaVisualizado.valorInformado !== undefined ? `<div class="linha"><span>Valor informado</span><strong>${escapar(moeda(caixaVisualizado.valorInformado))}</strong></div><div class="linha"><span>Diferença</span><strong>${escapar(moeda(caixaVisualizado.diferenca ?? 0))}</strong></div>` : ""}
+      </div>
+    </div>
+  </div>
+  <div class="rodape">Gerado em ${escapar(new Date().toLocaleString("pt-BR"))} - ERP CEDEP | Treinei, Passei!</div>
+<script>window.onload = () => { window.print(); };</script>
+</body>
+</html>`);
+    janela.document.close();
   };
 
   const fecharCaixa = () => {
@@ -827,11 +956,16 @@ function Secretaria({
                 {new Date(caixaVisualizado.abertura).toLocaleString("pt-BR")}
               </div>
             </div>
-            {caixaVisualizado.reaberturas?.length ? (
-              <span style={estilos.alertaReabertura}>
-                Caixa reaberto {caixaVisualizado.alteradoAposReabertura ? "e alterado" : ""}
-              </span>
-            ) : null}
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              {caixaVisualizado.reaberturas?.length ? (
+                <span style={estilos.alertaReabertura}>
+                  Caixa reaberto {caixaVisualizado.alteradoAposReabertura ? "e alterado" : ""}
+                </span>
+              ) : null}
+              <button style={estilos.botaoVerde} onClick={imprimirRelatorioCaixa}>
+                Gerar PDF / Imprimir
+              </button>
+            </div>
           </div>
 
           {movimentosVisualizados.length === 0 ? (

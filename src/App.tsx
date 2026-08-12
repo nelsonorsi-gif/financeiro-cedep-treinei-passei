@@ -84,6 +84,7 @@ type Lancamento = {
   usuarioResponsavelId?: string;
   usuarioResponsavelNome?: string;
   caixaId?: string;
+  movimentoCaixaId?: string;
   operacaoAdministrativa?: boolean;
   estornoDeId?: string;
   motivoEstorno?: string;
@@ -1708,15 +1709,18 @@ function App() {
       operacaoAdministrativa: usuarioAtual.perfil === "Administrador",
     };
 
-    registrarMovimentoCaixa(usuarioAtual, {
+    const movimentoEstorno = registrarMovimentoCaixa(usuarioAtual, {
       natureza: lancamento.entrada > 0 ? "estorno_entrada" : "estorno_saida",
       origem: "lancamento",
       origemId: lancamento.id,
       descricao: estorno.descricao,
       valor: Math.max(lancamento.entrada, lancamento.saida),
       formaPagamento: lancamento.formaPagamento,
+      estornoDeId: lancamento.movimentoCaixaId,
       motivoEstorno: motivo.trim(),
     });
+    estorno.caixaId = "caixaId" in movimentoEstorno ? movimentoEstorno.caixaId : undefined;
+    estorno.movimentoCaixaId = movimentoEstorno.id;
 
     setLancamentos((atuais) => [
       ...atuais.map((item) => item.id === lancamento.id ? { ...item, estornadoEm: agora } : item),
@@ -1893,6 +1897,8 @@ function App() {
           unidade:
             recebimento.unidade,
           origem: "manual",
+          caixaId: recebimento.caixaId,
+          movimentoCaixaId: recebimento.movimentoCaixaId,
         };
 
       const lancamentosNovos: Lancamento[] = [novoLancamento];
