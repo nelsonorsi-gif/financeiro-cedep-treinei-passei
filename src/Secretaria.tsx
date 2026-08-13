@@ -97,6 +97,22 @@ const converterNumero = (
     : 0;
 };
 
+const ehFormaDinheiro = (formaPagamento: string | undefined) =>
+  (formaPagamento ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR") === "dinheiro";
+
+const dinheiroEsperadoDaSessao = (sessao: SessaoCaixa) =>
+  (sessao.movimentos ?? []).reduce((saldo, movimento) => {
+    if (!ehFormaDinheiro(movimento.formaPagamento)) return saldo;
+    const entrada =
+      movimento.natureza === "entrada" ||
+      movimento.natureza === "estorno_saida";
+    return saldo + (entrada ? movimento.valor : -movimento.valor);
+  }, sessao.valorInicial);
+
 const normalizarSessao = (sessao: SessaoCaixa): SessaoCaixa => {
   const movimentos = [...(sessao.movimentos ?? [])];
   const idsOrigem = new Set(movimentos.map((item) => item.origemId));
@@ -276,6 +292,16 @@ function Secretaria({
   const valorEsperado = caixaAberto
     ? totaisDaSessao(caixaAberto).saldoEsperado
     : 0;
+  const dinheiroEsperado = caixaAberto
+    ? dinheiroEsperadoDaSessao(caixaAberto)
+    : 0;
+  const dinheiroEsperadoVisualizado = caixaVisualizado
+    ? dinheiroEsperadoDaSessao(caixaVisualizado)
+    : 0;
+  const diferencaDinheiroVisualizada =
+    caixaVisualizado?.valorInformado !== undefined
+      ? caixaVisualizado.valorInformado - dinheiroEsperadoVisualizado
+      : undefined;
   const totalRecebido = caixaAberto
     ? (caixaAberto.movimentos ?? [])
         .filter((item) => item.natureza === "entrada")
@@ -581,7 +607,7 @@ function Secretaria({
       </tr>`)
       .join("");
 
-    const janela = window.open("", "_blank", "noopener,noreferrer");
+    const janela = window.open("", "_blank", "width=1100,height=760");
     if (!janela) {
       alert("O navegador bloqueou a janela de impressão. Autorize pop-ups para este site.");
       return;
@@ -647,8 +673,9 @@ function Secretaria({
         <div class="linha"><span>Total de saídas</span><strong class="saida">${escapar(moeda(totaisMovimento.saidas))}</strong></div>
         <div class="linha"><span>Estornos de entradas</span><strong class="saida">${escapar(moeda(totaisMovimento.estornosEntradas))}</strong></div>
         <div class="linha"><span>Estornos de saídas</span><strong class="entrada">${escapar(moeda(totaisMovimento.estornosSaidas))}</strong></div>
-        <div class="geral linha"><span>Saldo esperado</span><strong>${escapar(moeda(totaisMovimento.saldoEsperado))}</strong></div>
-        ${caixaVisualizado.valorInformado !== undefined ? `<div class="linha"><span>Valor informado</span><strong>${escapar(moeda(caixaVisualizado.valorInformado))}</strong></div><div class="linha"><span>Diferença</span><strong>${escapar(moeda(caixaVisualizado.diferenca ?? 0))}</strong></div>` : ""}
+        <div class="linha"><span>Total líquido movimentado</span><strong>${escapar(moeda(totaisMovimento.saldoEsperado))}</strong></div>
+        <div class="geral linha"><span>Dinheiro esperado na gaveta</span><strong>${escapar(moeda(dinheiroEsperadoVisualizado))}</strong></div>
+        ${caixaVisualizado.valorInformado !== undefined ? `<div class="linha"><span>Dinheiro contado</span><strong>${escapar(moeda(caixaVisualizado.valorInformado))}</strong></div><div class="linha"><span>Diferença de dinheiro</span><strong>${escapar(moeda(diferencaDinheiroVisualizada ?? 0))}</strong></div>` : ""}
       </div>
     </div>
   </div>
@@ -675,12 +702,12 @@ function Secretaria({
     }
 
     const diferenca =
-      informado - valorEsperado;
+      informado - dinheiroEsperado;
 
     if (
       !window.confirm(
-        `Valor esperado: ${moeda(
-          valorEsperado
+        `Dinheiro esperado na gaveta: ${moeda(
+          dinheiroEsperado
         )}\nValor informado: ${moeda(
           informado
         )}\nDiferença: ${moeda(
@@ -700,7 +727,7 @@ function Secretaria({
               status: "Fechado",
               fechamento: fechamentoEm,
               valorInformado: informado,
-              valorEsperado,
+              valorEsperado: dinheiroEsperado,
               diferenca,
               observacaoFechamento: observacaoFechamento.trim(),
               historicoFechamentos: [
@@ -708,7 +735,7 @@ function Secretaria({
                 {
                   dataHora: fechamentoEm,
                   valorInformado: informado,
-                  valorEsperado,
+                  valorEsperado: dinheiroEsperado,
                   diferenca,
                   observacao: observacaoFechamento.trim(),
                 },
@@ -814,9 +841,15 @@ function Secretaria({
               )}
             />
             <Card
-              titulo="Valor esperado"
+              titulo="Total líquido movimentado"
               valor={moeda(
                 valorEsperado
+              )}
+            />
+            <Card
+              titulo="Dinheiro esperado na gaveta"
+              valor={moeda(
+                dinheiroEsperado
               )}
             />
             <Card
@@ -914,7 +947,7 @@ function Secretaria({
             >
               <h2>Fechar caixa</h2>
               <Campo
-                label="Valor contado/informado"
+                label="Dinheiro contado na gaveta"
                 value={
                   valorFechamento
                 }
@@ -1070,11 +1103,12 @@ function Secretaria({
                 <div style={estilos.registro}><span>Estornos de entradas</span><strong style={{ color: "#b91c1c" }}>{moeda(totaisMovimento.estornosEntradas)}</strong></div>
                 <div style={estilos.registro}><span>Estornos de saídas</span><strong style={{ color: "#166534" }}>{moeda(totaisMovimento.estornosSaidas)}</strong></div>
                 <div style={estilos.registro}><span>Taxas de cartão</span><strong>{moeda(movimentosVisualizados.reduce((total, item) => total + (item.taxaCartao ?? 0), 0))}</strong></div>
-                <div style={estilos.totalGeral}><span>Saldo esperado</span><strong>{moeda(totaisMovimento.saldoEsperado)}</strong></div>
+                <div style={estilos.registro}><span>Total líquido movimentado</span><strong>{moeda(totaisMovimento.saldoEsperado)}</strong></div>
+                <div style={estilos.totalGeral}><span>Dinheiro esperado na gaveta</span><strong>{moeda(dinheiroEsperadoVisualizado)}</strong></div>
                 {caixaVisualizado.valorInformado !== undefined && (
                   <>
-                    <div style={estilos.registro}><span>Valor informado</span><strong>{moeda(caixaVisualizado.valorInformado)}</strong></div>
-                    <div style={estilos.registro}><span>Diferença</span><strong>{moeda(caixaVisualizado.diferenca ?? 0)}</strong></div>
+                    <div style={estilos.registro}><span>Dinheiro contado</span><strong>{moeda(caixaVisualizado.valorInformado)}</strong></div>
+                    <div style={estilos.registro}><span>Diferença de dinheiro</span><strong>{moeda(diferencaDinheiroVisualizada ?? 0)}</strong></div>
                   </>
                 )}
               </div>
