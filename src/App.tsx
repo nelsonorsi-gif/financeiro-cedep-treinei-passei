@@ -42,6 +42,7 @@ import {
   supabaseConfigurado,
 } from "./lib/supabase";
 import {
+  EVENTO_SINCRONIZACAO_REMOTA,
   iniciarSincronizacaoAutomatica,
   prepararSincronizacaoInicial,
 } from "./servicos/sincronizacaoAutomatica";
@@ -672,6 +673,46 @@ function App() {
   /* =======================================================
      SALVAMENTO AUTOMÁTICO
   ======================================================= */
+
+  useEffect(() => {
+    const atualizarDadosRecebidos = (
+      evento: Event
+    ) => {
+      const detalhe = (evento as CustomEvent<{
+        chave?: string;
+        valor?: unknown;
+      }>).detail;
+
+      if (
+        detalhe?.chave ===
+          CHAVE_LANCAMENTOS &&
+        Array.isArray(detalhe.valor)
+      ) {
+        setLancamentos(
+          detalhe.valor as Lancamento[]
+        );
+      }
+      if (
+        detalhe?.chave ===
+          CHAVE_IMPORTACOES &&
+        Array.isArray(detalhe.valor)
+      ) {
+        setImportacoes(
+          detalhe.valor as ImportacaoSalva[]
+        );
+      }
+    };
+
+    window.addEventListener(
+      EVENTO_SINCRONIZACAO_REMOTA,
+      atualizarDadosRecebidos
+    );
+    return () =>
+      window.removeEventListener(
+      EVENTO_SINCRONIZACAO_REMOTA,
+      atualizarDadosRecebidos
+    );
+  }, []);
 
   useEffect(() => {
     if (!carregado) {

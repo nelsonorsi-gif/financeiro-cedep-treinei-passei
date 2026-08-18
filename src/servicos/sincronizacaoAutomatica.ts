@@ -27,6 +27,22 @@ const CHAVES_COMPARTILHADAS = [
   "financeiro-cedep-pagamentos-pessoais",
 ] as const;
 
+export const EVENTO_SINCRONIZACAO_REMOTA =
+  "financeiro-sincronizacao-remota";
+
+const EVENTOS_POR_CHAVE: Partial<
+  Record<(typeof CHAVES_COMPARTILHADAS)[number], string>
+> = {
+  "financeiro-cedep-configuracoes": "financeiro-config-atualizada",
+  "financeiro-cedep-mensalidades": "financeiro-mensalidades-atualizada",
+  "financeiro-cedep-secretaria": "financeiro-caixa-atualizado",
+  "financeiro-cedep-academico": "financeiro-academico-atualizado",
+  "financeiro-cedep-observacoes-alunos":
+    "financeiro-observacoes-alunos-atualizadas",
+  "financeiro-cedep-despesas-pessoais":
+    "financeiro-despesas-pessoais-atualizadas",
+};
+
 type RegistroNuvem = {
   chave: string;
   valor: unknown;
@@ -359,9 +375,6 @@ export function iniciarSincronizacaoAutomatica(
       2000
     );
 
-  let recargaAgendada:
-    number | undefined;
-
   const canal = cliente
     .channel(
       "erp-dados-compartilhados"
@@ -409,21 +422,35 @@ export function iniciarSincronizacaoAutomatica(
           )
         );
 
-        if (
-          recargaAgendada !==
-          undefined
-        ) {
-          window.clearTimeout(
-            recargaAgendada
+        window.dispatchEvent(
+          new CustomEvent(
+            EVENTO_SINCRONIZACAO_REMOTA,
+            {
+              detail: {
+                chave: novo.chave,
+                valor: novo.valor,
+              },
+            }
+          )
+        );
+
+        const eventoDoModulo =
+          EVENTOS_POR_CHAVE[
+            novo.chave as (typeof CHAVES_COMPARTILHADAS)[number]
+          ];
+        if (eventoDoModulo) {
+          window.dispatchEvent(
+            new Event(eventoDoModulo)
           );
         }
-
-        recargaAgendada =
-          window.setTimeout(
-            () =>
-              window.location.reload(),
-            900
-          );
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: novo.chave,
+            newValue: JSON.stringify(
+              novo.valor
+            ),
+          })
+        );
       }
     )
     .subscribe();
@@ -432,14 +459,6 @@ export function iniciarSincronizacaoAutomatica(
     window.clearInterval(
       intervalo
     );
-    if (
-      recargaAgendada !==
-      undefined
-    ) {
-      window.clearTimeout(
-        recargaAgendada
-      );
-    }
     void cliente.removeChannel(
       canal
     );
