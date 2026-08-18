@@ -25,6 +25,7 @@ const CHAVES_COMPARTILHADAS = [
   "financeiro-cedep-despesas-pessoais",
   "financeiro-cedep-categorias-pessoais",
   "financeiro-cedep-pagamentos-pessoais",
+  "financeiro-cedep-taxas-cartao",
 ] as const;
 
 export const EVENTO_SINCRONIZACAO_REMOTA =
@@ -41,6 +42,8 @@ const EVENTOS_POR_CHAVE: Partial<
     "financeiro-observacoes-alunos-atualizadas",
   "financeiro-cedep-despesas-pessoais":
     "financeiro-despesas-pessoais-atualizadas",
+  "financeiro-cedep-taxas-cartao":
+    "financeiro-taxas-cartao-atualizadas",
 };
 
 type RegistroNuvem = {
@@ -144,7 +147,7 @@ const enviarRegistrosLocais =
 export async function prepararSincronizacaoInicial(
   usuarioId: string,
   podeEditar: boolean,
-  _perfil: Perfil
+  perfil: Perfil
 ) {
   const cliente =
     clienteObrigatorio();
@@ -188,6 +191,40 @@ export async function prepararSincronizacaoInicial(
   const registros =
     (data ??
       []) as RegistroNuvem[];
+
+  const chaveTaxasCartao =
+    "financeiro-cedep-taxas-cartao";
+  const taxasLocais =
+    lerValorLocal(chaveTaxasCartao);
+  const taxasJaEstaoNaNuvem =
+    registros.some(
+      (registro) =>
+        registro.chave === chaveTaxasCartao
+    );
+
+  if (
+    perfil === "Administrador" &&
+    taxasLocais !== undefined &&
+    !taxasJaEstaoNaNuvem
+  ) {
+    const { error: erroTaxas } =
+      await cliente
+        .from("erp_dados")
+        .upsert(
+          {
+            chave: chaveTaxasCartao,
+            valor: taxasLocais,
+            updated_by: usuarioId,
+            updated_at:
+              new Date().toISOString(),
+          },
+          { onConflict: "chave" }
+        );
+
+    if (erroTaxas) {
+      throw erroTaxas;
+    }
+  }
 
   if (
     registros.length === 0
