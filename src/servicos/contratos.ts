@@ -19,6 +19,7 @@ export type HistoricoContrato = {
 };
 
 export type RegistroContrato = {
+  situacaoContrato?: "Ativo" | "Encerrado" | "Cancelado";
   inicioContrato?: string;
   terminoContrato?: string;
   diaVencimentoContrato?: string;

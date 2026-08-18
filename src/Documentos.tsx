@@ -28,6 +28,11 @@ import { sincronizarContasLocais } from "./servicos/contasEstruturadas";
 import type {
   Curso,
 } from "./CatalogoCursos";
+import {
+  CHAVE_ACADEMICO,
+  type Matricula,
+  type Turma,
+} from "./Academico";
 
 import {
   CHAVE_SECRETARIA,
@@ -658,6 +663,16 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
   const [alunoContrato, setAlunoContrato] =
     useState("");
   const [buscaContrato, setBuscaContrato] = useState("");
+  const [anoLetivoFiltro, setAnoLetivoFiltro] = useState(String(anoAtual));
+  const [situacaoContratoFiltro, setSituacaoContratoFiltro] = useState("Ativos");
+  const [somenteMatriculadosFiltro, setSomenteMatriculadosFiltro] = useState(false);
+  const [situacaoParcelaFiltro, setSituacaoParcelaFiltro] = useState("Todos");
+  const [duracaoFiltro, setDuracaoFiltro] = useState("Todos");
+  const [unidadeFiltro, setUnidadeFiltro] = useState("Todos");
+  const [cursoFiltro, setCursoFiltro] = useState("Todos");
+  const [turmaFiltro, setTurmaFiltro] = useState("Todos");
+  const [turmas, setTurmas] = useState<Turma[]>([]);
+  const [matriculas, setMatriculas] = useState<Matricula[]>([]);
   const [versaoContratos, setVersaoContratos] = useState(0);
   const [formularioContratoVisivel, setFormularioContratoVisivel] = useState(false);
   const [parcelasVencidas, setParcelasVencidas] = useState<"gerar" | "ignorar">("gerar");
@@ -693,6 +708,7 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
     duracaoContrato,
     setDuracaoContrato,
   ] = useState("1");
+  const [situacaoContrato, setSituacaoContrato] = useState<"Ativo" | "Encerrado" | "Cancelado">("Ativo");
   const [
     anosContrato,
     setAnosContrato,
@@ -737,6 +753,7 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
           salvas[alunoId];
 
         if (!salva) return;
+        setSituacaoContrato(salva.situacaoContrato || "Ativo");
         setInicioContrato(
           salva.inicioContrato || ""
         );
@@ -800,7 +817,7 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
         const anterior = salvas[alunoContrato];
         const agora = new Date().toISOString();
         const atual: RegistroContrato = {
-          inicioContrato, terminoContrato, diaVencimentoContrato,
+          situacaoContrato, inicioContrato, terminoContrato, diaVencimentoContrato,
           enderecoContrato, cidadeContrato, autorizacaoImagem,
           clausulas, duracaoContrato, anosContrato,
         };
@@ -870,6 +887,7 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
         localStorage.getItem(
           CHAVE_CONFIGURACAO_PIX
         );
+      const academico = localStorage.getItem(CHAVE_ACADEMICO);
 
       if (cadastros) {
         const dados =
@@ -917,6 +935,11 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
         );
       }
 
+      if (academico) {
+        const dados = JSON.parse(academico);
+        setTurmas(Array.isArray(dados.turmas) ? dados.turmas : []);
+        setMatriculas(Array.isArray(dados.matriculas) ? dados.matriculas : []);
+      }
       if (pixSalvo) {
         setConfiguracaoPix({
           chave: "",
@@ -958,20 +981,68 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
     [alunos]
   );
 
-  const contratosSalvos = useMemo(() => {
+  const contratosBase = useMemo(() => {
     void versaoContratos;
     try {
       const registros = JSON.parse(
         localStorage.getItem(CHAVE_CONFIGURACOES_CONTRATOS) || "{}"
       ) as Record<string, RegistroContrato>;
-      const termo = buscaContrato.trim().toLocaleLowerCase("pt-BR");
+      const hoje = new Date().toISOString().slice(0, 10);
+
       return Object.entries(registros)
-        .map(([alunoId, contrato]) => ({
-          alunoId,
-          contrato,
-          aluno: alunos.find((item) => item.id === alunoId),
-        }))
-        .filter((item) => item.aluno && (!termo || item.aluno.nome.toLocaleLowerCase("pt-BR").includes(termo)))
+        .map(([alunoId, contrato]) => {
+          const aluno = alunos.find((item) => item.id === alunoId);
+          const parcelas = contas.filter(
+            (conta) =>
+              conta.alunoId === alunoId &&
+              conta.tipo === "receber" &&
+              conta.status !== "Cancelado" &&
+              (conta.origem === "mensalidade" ||
+                conta.observacao?.includes("Contrato: " + alunoId))
+          );
+          const parcelasAtivas = parcelas.filter((conta) =>
+            ["Pendente", "Parcial", "Renegociado"].includes(conta.status)
+          );
+          const parcelasVencidasContrato = parcelasAtivas.filter(
+            (conta) => conta.vencimento < hoje
+          );
+          const parcelasQuitadas = parcelas.filter((conta) =>
+            ["Recebido", "Pago"].includes(conta.status)
+          );
+          const matriculasAluno = matriculas.filter(
+            (matricula) =>
+              matricula.aluno_id === alunoId &&
+              matricula.status !== "Cancelada"
+          );
+          const turmasAluno = matriculasAluno
+            .map((matricula) =>
+              turmas.find((turma) => turma.id === matricula.turma_id)
+            )
+            .filter((turma): turma is Turma => Boolean(turma));
+          const terminoComparavel = contrato.terminoContrato?.length === 7
+            ? contrato.terminoContrato + "-31"
+            : contrato.terminoContrato;
+          const situacao = contrato.situacaoContrato ||
+            (terminoComparavel && terminoComparavel < hoje ? "Encerrado" : "Ativo");
+          const ativo =
+            situacao === "Ativo" &&
+            aluno?.situacao === "Ativo" &&
+            (!terminoComparavel || terminoComparavel >= hoje);
+
+          return {
+            alunoId,
+            contrato,
+            aluno,
+            parcelas,
+            parcelasAtivas,
+            parcelasVencidas: parcelasVencidasContrato,
+            parcelasQuitadas,
+            turmasAluno,
+            ativo,
+            situacao,
+          };
+        })
+        .filter((item) => item.aluno)
         .sort((a, b) =>
           String(b.contrato.atualizadoEm || b.contrato.criadoEm || "").localeCompare(
             String(a.contrato.atualizadoEm || a.contrato.criadoEm || "")
@@ -980,8 +1051,164 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
     } catch {
       return [];
     }
-  }, [alunos, buscaContrato, versaoContratos]);
+  }, [alunos, contas, matriculas, turmas, versaoContratos]);
 
+  const anosLetivosFiltro = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          String(anoAtual),
+          ...contratosBase.flatMap((item) =>
+            (item.contrato.anosContrato ?? []).map((ano) => ano.anoLetivo)
+          ),
+          ...turmas.map((turma) => String(turma.ano)),
+        ])
+      ).filter(Boolean).sort((a, b) => b.localeCompare(a, "pt-BR", { numeric: true })),
+    [contratosBase, turmas]
+  );
+
+  const unidadesFiltro = useMemo(
+    () =>
+      Array.from(
+        new Set(alunos.map((aluno) => aluno.unidade).filter(Boolean))
+      ).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [alunos]
+  );
+
+  const cursosFiltro = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...contratosBase.flatMap((item) =>
+            (item.contrato.anosContrato ?? []).map((ano) => ano.curso)
+          ),
+          ...turmas.map((turma) => turma.curso),
+        ])
+      ).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [contratosBase, turmas]
+  );
+
+  const turmasDisponiveisFiltro = useMemo(
+    () =>
+      turmas
+        .filter(
+          (turma) =>
+            (anoLetivoFiltro === "Todos" || String(turma.ano) === anoLetivoFiltro) &&
+            (unidadeFiltro === "Todos" || turma.unidade === unidadeFiltro) &&
+            (cursoFiltro === "Todos" || turma.curso === cursoFiltro)
+        )
+        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+    [anoLetivoFiltro, cursoFiltro, turmas, unidadeFiltro]
+  );
+
+  const atendeFiltrosEstruturais = (item: (typeof contratosBase)[number]) => {
+    const anos = item.contrato.anosContrato ?? [];
+    const turmasDoAno = item.turmasAluno.filter(
+      (turma) => anoLetivoFiltro === "Todos" || String(turma.ano) === anoLetivoFiltro
+    );
+    return (
+      (anoLetivoFiltro === "Todos" ||
+        anos.some((ano) => ano.anoLetivo === anoLetivoFiltro) ||
+        turmasDoAno.length > 0) &&
+      (unidadeFiltro === "Todos" || item.aluno?.unidade === unidadeFiltro) &&
+      (cursoFiltro === "Todos" ||
+        anos.some((ano) => ano.curso === cursoFiltro) ||
+        turmasDoAno.some((turma) => turma.curso === cursoFiltro)) &&
+      (turmaFiltro === "Todos" ||
+        item.turmasAluno.some((turma) => turma.id === turmaFiltro))
+    );
+  };
+
+  const possuiMatriculaNosFiltros = (item: (typeof contratosBase)[number]) =>
+    item.turmasAluno.some(
+      (turma) =>
+        turma.ativo &&
+        (anoLetivoFiltro === "Todos" || String(turma.ano) === anoLetivoFiltro) &&
+        (unidadeFiltro === "Todos" || turma.unidade === unidadeFiltro) &&
+        (cursoFiltro === "Todos" || turma.curso === cursoFiltro) &&
+        (turmaFiltro === "Todos" || turma.id === turmaFiltro)
+    );
+
+  const contratosParaIndicadores = contratosBase.filter(atendeFiltrosEstruturais);
+  const contratosAtivos = contratosParaIndicadores.filter((item) => item.ativo);
+  const indicadoresContratos = {
+    ativos: contratosAtivos.length,
+    comParcelas: contratosAtivos.filter((item) => item.parcelasAtivas.length > 0).length,
+    semParcelas: contratosAtivos.filter((item) => item.parcelas.length === 0).length,
+    umAno: contratosAtivos.filter((item) => Number(item.contrato.duracaoContrato || 1) === 1).length,
+    doisAnos: contratosAtivos.filter((item) => Number(item.contrato.duracaoContrato || 1) === 2).length,
+    tresAnos: contratosAtivos.filter((item) => Number(item.contrato.duracaoContrato || 1) === 3).length,
+  };
+
+  const alunosMatriculadosNoAno = useMemo(() => {
+    const turmasValidas = new Set(
+      turmas
+        .filter(
+          (turma) =>
+            turma.ativo &&
+            (anoLetivoFiltro === "Todos" || String(turma.ano) === anoLetivoFiltro) &&
+            (unidadeFiltro === "Todos" || turma.unidade === unidadeFiltro) &&
+            (cursoFiltro === "Todos" || turma.curso === cursoFiltro) &&
+            (turmaFiltro === "Todos" || turma.id === turmaFiltro)
+        )
+        .map((turma) => turma.id)
+    );
+    return new Set(
+      matriculas
+        .filter(
+          (matricula) =>
+            matricula.status !== "Cancelada" &&
+            turmasValidas.has(matricula.turma_id)
+        )
+        .map((matricula) => matricula.aluno_id)
+    ).size;
+  }, [anoLetivoFiltro, cursoFiltro, matriculas, turmaFiltro, turmas, unidadeFiltro]);
+
+  const contratosSalvos = useMemo(() => {
+    const termo = buscaContrato.trim().toLocaleLowerCase("pt-BR");
+    return contratosBase.filter((item) => {
+      if (!atendeFiltrosEstruturais(item)) return false;
+      if (termo && !item.aluno!.nome.toLocaleLowerCase("pt-BR").includes(termo)) return false;
+      if (situacaoContratoFiltro === "Ativos" && !item.ativo) return false;
+      if (situacaoContratoFiltro === "Encerrados" && item.situacao !== "Encerrado") return false;
+      if (situacaoContratoFiltro === "Cancelados" && item.situacao !== "Cancelado") return false;
+      if (somenteMatriculadosFiltro && !possuiMatriculaNosFiltros(item)) return false;
+      if (
+        duracaoFiltro !== "Todos" &&
+        Number(item.contrato.duracaoContrato || 1) !== Number(duracaoFiltro)
+      ) return false;
+      if (situacaoParcelaFiltro === "Com parcelas" && item.parcelasAtivas.length === 0) return false;
+      if (situacaoParcelaFiltro === "Sem parcelas" && item.parcelas.length > 0) return false;
+      if (situacaoParcelaFiltro === "Pendentes" && item.parcelasAtivas.length === 0) return false;
+      if (situacaoParcelaFiltro === "Vencidas" && item.parcelasVencidas.length === 0) return false;
+      if (
+        situacaoParcelaFiltro === "Quitadas" &&
+        (item.parcelas.length === 0 || item.parcelasQuitadas.length !== item.parcelas.length)
+      ) return false;
+      return true;
+    });
+  }, [
+    anoLetivoFiltro,
+    buscaContrato,
+    contratosBase,
+    cursoFiltro,
+    duracaoFiltro,
+    situacaoContratoFiltro,
+    situacaoParcelaFiltro,
+    turmaFiltro,
+    unidadeFiltro,
+  ]);
+
+  const limparFiltrosContratos = () => {
+    setBuscaContrato("");
+    setAnoLetivoFiltro(String(anoAtual));
+    setSituacaoContratoFiltro("Ativos");
+    setSituacaoParcelaFiltro("Todos");
+    setDuracaoFiltro("Todos");
+    setUnidadeFiltro("Todos");
+    setCursoFiltro("Todos");
+    setTurmaFiltro("Todos");
+  };
   const anosLetivosCarne = useMemo(() => {
     if (!alunoCarne) return [];
     return Array.from(
@@ -1745,21 +1972,114 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
               <h2>Contratos cadastrados</h2>
               <Botao onClick={() => {
                 setAlunoContrato(""); setInicioContrato(""); setTerminoContrato(""); setClausulas("");
-                setDuracaoContrato("1"); setAnosContrato([criarAnoContrato(0)]); setParcelasVencidas("gerar");
+                setDuracaoContrato("1"); setSituacaoContrato("Ativo"); setAnosContrato([criarAnoContrato(0)]); setParcelasVencidas("gerar");
                 setMensagemContrato(""); setFormularioContratoVisivel(true);
               }}>Novo contrato</Botao>
             </div>
-            <CampoTexto label="Buscar aluno" value={buscaContrato} placeholder="Digite o nome do aluno" onChange={setBuscaContrato} />
+            <div style={estilos.indicadoresGrid}>
+              <IndicadorContrato titulo="Contratos ativos" valor={indicadoresContratos.ativos} cor="#2563eb" onClick={() => {
+                setSituacaoContratoFiltro("Ativos"); setSituacaoParcelaFiltro("Todos"); setDuracaoFiltro("Todos"); setSomenteMatriculadosFiltro(false);
+              }} />
+              <IndicadorContrato titulo="Com parcelas ativas" valor={indicadoresContratos.comParcelas} cor="#15803d" onClick={() => {
+                setSituacaoContratoFiltro("Ativos"); setSituacaoParcelaFiltro("Com parcelas"); setSomenteMatriculadosFiltro(false);
+              }} />
+              <IndicadorContrato titulo="Sem parcelas geradas" valor={indicadoresContratos.semParcelas} cor={indicadoresContratos.semParcelas > 0 ? "#dc2626" : "#64748b"} onClick={() => {
+                setSituacaoContratoFiltro("Ativos"); setSituacaoParcelaFiltro("Sem parcelas"); setSomenteMatriculadosFiltro(false);
+              }} />
+              <IndicadorContrato titulo="Alunos matriculados nas turmas" valor={alunosMatriculadosNoAno} cor="#7c3aed" onClick={() => {
+                setSituacaoContratoFiltro("Todos"); setSituacaoParcelaFiltro("Todos"); setDuracaoFiltro("Todos"); setSomenteMatriculadosFiltro(true);
+              }} />
+            </div>
+
+            <div style={estilos.duracaoResumo}>
+              <div>
+                <strong>Contratos ativos por duração</strong>
+                <div style={estilos.textoCinza}>Clique em uma duração para filtrar a relação.</div>
+              </div>
+              <div style={estilos.duracaoOpcoes}>
+                {[
+                  { valor: "1", rotulo: "1 ano", total: indicadoresContratos.umAno },
+                  { valor: "2", rotulo: "2 anos", total: indicadoresContratos.doisAnos },
+                  { valor: "3", rotulo: "3 anos", total: indicadoresContratos.tresAnos },
+                ].map((item) => (
+                  <button key={item.valor} onClick={() => {
+                    setSituacaoContratoFiltro("Ativos"); setDuracaoFiltro(item.valor);
+                  }} style={{
+                    ...estilos.duracaoBotao,
+                    borderColor: duracaoFiltro === item.valor ? "#2563eb" : "#d7dee8",
+                    background: duracaoFiltro === item.valor ? "#eff6ff" : "white",
+                  }}>
+                    <strong style={{ fontSize: 22 }}>{item.total}</strong>
+                    <span>{item.rotulo}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={estilos.filtrosContrato}>
+              <CampoTexto label="Buscar aluno" value={buscaContrato} placeholder="Digite o nome do aluno" onChange={setBuscaContrato} />
+              <CampoSelect label="Ano letivo" value={anoLetivoFiltro} opcoes={[
+                { valor: "Todos", rotulo: "Todos os anos" },
+                ...anosLetivosFiltro.map((ano) => ({ valor: ano, rotulo: ano })),
+              ]} onChange={(valor) => { setAnoLetivoFiltro(valor); setTurmaFiltro("Todos"); }} />
+              <CampoSelect label="Situação do contrato" value={situacaoContratoFiltro} opcoes={[
+                { valor: "Todos", rotulo: "Todos" }, { valor: "Ativos", rotulo: "Ativos" },
+                { valor: "Encerrados", rotulo: "Encerrados ou inativos" },
+                { valor: "Cancelados", rotulo: "Cancelados" },
+              ]} onChange={setSituacaoContratoFiltro} />
+              <CampoSelect label="Situação das parcelas" value={situacaoParcelaFiltro} opcoes={[
+                { valor: "Todos", rotulo: "Todas" }, { valor: "Com parcelas", rotulo: "Com parcelas ativas" },
+                { valor: "Sem parcelas", rotulo: "Sem parcelas geradas" }, { valor: "Pendentes", rotulo: "Pendentes" },
+                { valor: "Vencidas", rotulo: "Vencidas" }, { valor: "Quitadas", rotulo: "Todas quitadas" },
+              ]} onChange={setSituacaoParcelaFiltro} />
+              <CampoSelect label="Duração" value={duracaoFiltro} opcoes={[
+                { valor: "Todos", rotulo: "Todas" }, { valor: "1", rotulo: "1 ano" },
+                { valor: "2", rotulo: "2 anos" }, { valor: "3", rotulo: "3 anos" },
+              ]} onChange={setDuracaoFiltro} />
+              <CampoSelect label="Unidade" value={unidadeFiltro} opcoes={[
+                { valor: "Todos", rotulo: "Todas" },
+                ...unidadesFiltro.map((unidade) => ({ valor: unidade, rotulo: unidade })),
+              ]} onChange={(valor) => { setUnidadeFiltro(valor); setTurmaFiltro("Todos"); }} />
+              <CampoSelect label="Curso" value={cursoFiltro} opcoes={[
+                { valor: "Todos", rotulo: "Todos" },
+                ...cursosFiltro.map((curso) => ({ valor: curso, rotulo: curso })),
+              ]} onChange={(valor) => { setCursoFiltro(valor); setTurmaFiltro("Todos"); }} />
+              <CampoSelect label="Turma" value={turmaFiltro} opcoes={[
+                { valor: "Todos", rotulo: "Todas" },
+                ...turmasDisponiveisFiltro.map((turma) => ({ valor: turma.id, rotulo: turma.nome + " - " + turma.ano })),
+              ]} onChange={setTurmaFiltro} />
+            </div>
+            <div style={estilos.barraResultados}>
+              <span><strong>{contratosSalvos.length}</strong> contrato(s) encontrado(s)
+                {anoLetivoFiltro !== "Todos" ? " no ano letivo " + anoLetivoFiltro : ""}.
+              </span>
+              <button onClick={limparFiltrosContratos} style={estilos.botaoLimpar}>Limpar filtros</button>
+            </div>
             <div style={{ display: "grid", gap: 12, margin: "16px 0 28px" }}>
               {contratosSalvos.length === 0 ? (
                 <p style={estilos.textoCinza}>Nenhum contrato salvo encontrado.</p>
-              ) : contratosSalvos.map(({ alunoId, aluno, contrato }) => (
+              ) : contratosSalvos.map(({ alunoId, aluno, contrato, parcelas, parcelasAtivas, parcelasVencidas, parcelasQuitadas, turmasAluno, ativo, situacao }) => (
                 <article key={alunoId} style={{ border: "1px solid #dce3ed", borderRadius: 12, padding: 16, background: "#fff" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                     <div>
-                      <strong>{aluno!.nome}</strong>
-                      <div style={estilos.textoCinza}>{contrato.anosContrato?.map((ano) => `${ano.curso}: ${ano.parcelas}x de ${moeda(converterMoeda(ano.valorPadrao))}`).join(" • ") || "Condições financeiras não informadas"}</div>
-                      <small>Revisão {contrato.revisao || 1} • alterado por {contrato.atualizadoPor || "não informado"}{contrato.atualizadoEm ? ` em ${new Date(contrato.atualizadoEm).toLocaleString("pt-BR")}` : ""}</small>
+                      <div style={estilos.identificacaoContrato}>
+                        <strong>{aluno!.nome}</strong>
+                        <span style={{ ...estilos.seloContrato, background: situacao === "Cancelado" ? "#fee2e2" : ativo ? "#dcfce7" : "#e5e7eb", color: situacao === "Cancelado" ? "#991b1b" : ativo ? "#166534" : "#475569" }}>
+                          {situacao === "Cancelado" ? "Cancelado" : ativo ? "Ativo" : "Encerrado / inativo"}
+                        </span>
+                        <span style={estilos.seloDuracao}>{contrato.duracaoContrato || "1"} ano(s)</span>
+                      </div>
+                      <div style={estilos.textoCinza}>{contrato.anosContrato?.map((ano) => ano.anoLetivo + " - " + ano.curso + ": " + ano.parcelas + "x de " + moeda(converterMoeda(ano.valorPadrao))).join(" • ") || "Condições financeiras não informadas"}</div>
+                      {turmasAluno.length > 0 && <div style={estilos.textoCinza}>Turma(s): {turmasAluno.map((turma) => turma.nome + " (" + turma.ano + ")").join(" • ")}</div>}
+                      <div style={estilos.resumoParcelasContrato}>
+                        <span>Total: <strong>{parcelas.length}</strong></span>
+                        <span>Pendentes/ativas: <strong>{parcelasAtivas.length}</strong></span>
+                        <span style={{ color: parcelasVencidas.length ? "#b91c1c" : undefined }}>Vencidas: <strong>{parcelasVencidas.length}</strong></span>
+                        <span>Quitadas: <strong>{parcelasQuitadas.length}</strong></span>
+                        <span>Valor pendente: <strong>{moeda(parcelasAtivas.reduce((total, parcela) => total + Math.max(0, parcela.valor - (parcela.valorPago ?? 0)), 0))}</strong></span>
+                      </div>
+                      {parcelas.length === 0 && <div style={estilos.avisoSemParcelas}>Contrato sem parcelas geradas.</div>}
+                      <small>Revisão {contrato.revisao || 1} • alterado por {contrato.atualizadoPor || "não informado"}{contrato.atualizadoEm ? " em " + new Date(contrato.atualizadoEm).toLocaleString("pt-BR") : ""}</small>
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <Botao onClick={() => carregarConfiguracaoContrato(alunoId)}>Abrir contrato</Botao>
@@ -1803,6 +2123,17 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
                 }
               />
               <CampoSelect
+                label="Situação do contrato"
+                value={situacaoContrato}
+                opcoes={[
+                  { valor: "Ativo", rotulo: "Ativo" },
+                  { valor: "Encerrado", rotulo: "Encerrado" },
+                  { valor: "Cancelado", rotulo: "Cancelado" },
+                ]}
+                onChange={(valor) =>
+                  setSituacaoContrato(valor as "Ativo" | "Encerrado" | "Cancelado")
+                }
+              />              <CampoSelect
                 label="Duração do contrato"
                 value={
                   duracaoContrato
@@ -2354,6 +2685,26 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
   );
 }
 
+function IndicadorContrato({
+  titulo,
+  valor,
+  cor,
+  onClick,
+}: {
+  titulo: string;
+  valor: number;
+  cor: string;
+  onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick} style={{ ...estilos.indicadorContrato, borderTopColor: cor }}>
+      <span style={estilos.textoCinza}>{titulo}</span>
+      <strong style={{ color: cor, fontSize: 30 }}>{valor}</strong>
+      <small style={{ color: "#64748b" }}>Clique para filtrar</small>
+    </button>
+  );
+}
+
 type Opcao = {
   valor: string;
   rotulo: string;
@@ -2578,6 +2929,123 @@ const estilos: Record<
     padding: "13px 20px",
     cursor: "pointer",
     fontWeight: "bold",
+  },
+  indicadoresGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
+    gap: 14,
+    marginTop: 18,
+  },
+  indicadorContrato: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 7,
+    padding: 18,
+    border: "1px solid #dce3ed",
+    borderTop: "4px solid",
+    borderRadius: 12,
+    background: "white",
+    cursor: "pointer",
+    textAlign: "left",
+    boxShadow: "0 4px 12px rgba(15,23,42,.05)",
+  },
+  duracaoResumo: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 18,
+    flexWrap: "wrap",
+    padding: 18,
+    marginTop: 16,
+    border: "1px solid #dce3ed",
+    borderRadius: 12,
+    background: "#f8fafc",
+  },
+  duracaoOpcoes: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  duracaoBotao: {
+    minWidth: 92,
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+    alignItems: "center",
+    padding: "10px 16px",
+    border: "1px solid",
+    borderRadius: 10,
+    cursor: "pointer",
+    color: "#0f172a",
+  },
+  filtrosContrato: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
+    gap: "0 14px",
+    padding: "4px 18px 18px",
+    marginTop: 16,
+    border: "1px solid #dce3ed",
+    borderRadius: 12,
+    background: "#f8fafc",
+  },
+  barraResultados: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+    marginTop: 14,
+  },
+  botaoLimpar: {
+    padding: "9px 14px",
+    border: "1px solid #cbd5e1",
+    borderRadius: 8,
+    background: "white",
+    cursor: "pointer",
+    fontWeight: 700,
+    color: "#334155",
+  },
+  identificacaoContrato: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom: 5,
+  },
+  seloContrato: {
+    padding: "4px 8px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  seloDuracao: {
+    padding: "4px 8px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 700,
+    background: "#dbeafe",
+    color: "#1d4ed8",
+  },
+  resumoParcelasContrato: {
+    display: "flex",
+    gap: "7px 16px",
+    flexWrap: "wrap",
+    margin: "10px 0",
+    padding: "9px 11px",
+    borderRadius: 8,
+    background: "#f1f5f9",
+    fontSize: 13,
+  },
+  avisoSemParcelas: {
+    display: "inline-block",
+    margin: "2px 0 9px",
+    padding: "6px 9px",
+    borderRadius: 7,
+    background: "#fee2e2",
+    color: "#991b1b",
+    fontSize: 13,
+    fontWeight: 700,
   },
   resumo: {
     marginTop: 20,
