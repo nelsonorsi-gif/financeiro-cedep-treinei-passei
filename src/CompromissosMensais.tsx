@@ -98,6 +98,7 @@ export default function CompromissosMensais({
   const [dia, setDia] = useState("10");
   const [banco, setBanco] = useState("");
   const [unidade, setUnidade] = useState("CEDEP");
+  const [compromissoEditando, setCompromissoEditando] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("Todos");
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
@@ -139,34 +140,91 @@ export default function CompromissosMensais({
     void carregar().catch((erro) => console.error("Erro ao carregar compromissos:", erro));
   }, [carregar]);
 
+  const limparFormulario = () => {
+    setDescricao("");
+    setEscopo("Empresarial");
+    setBeneficiario("");
+    setCategoria("");
+    setValor("");
+    setDia("10");
+    setBanco("");
+    setUnidade(configuracoes.unidades[0] || "CEDEP");
+    setCompromissoEditando(null);
+  };
+
   const salvarCompromisso = async () => {
-    if (!supabase || !descricao.trim() || Number(valor.replace(",", ".")) <= 0) {
-      alert("Informe descrição e valor válido.");
+    const valorNumerico = Number(valor.replace(",", "."));
+    if (!supabase || !descricao.trim() || valorNumerico <= 0) {
+      alert("Informe descri\u00e7\u00e3o e valor v\u00e1lido.");
       return;
     }
-    const { error } = await supabase.from("compromissos_recorrentes").insert({
+    const estavaEditando = Boolean(compromissoEditando);
+    const dados = {
       descricao: descricao.trim(),
       escopo,
       beneficiario: beneficiario.trim(),
       categoria: categoria.trim(),
-      valor_padrao: Number(valor.replace(",", ".")),
+      valor_padrao: valorNumerico,
       dia_vencimento: Math.max(1, Math.min(31, Number(dia))),
       banco: banco.trim(),
-      unidade: unidade.trim() || "CEDEP",
-      inicio: primeiroDia(competencia),
-      ativo: true,
-      criado_por: usuarioAtual.id,
-    });
+      unidade: unidade.trim() || configuracoes.unidades[0] || "CEDEP",
+      atualizado_em: new Date().toISOString(),
+    };
+    const { error } = compromissoEditando
+      ? await supabase
+          .from("compromissos_recorrentes")
+          .update(dados)
+          .eq("id", compromissoEditando)
+      : await supabase.from("compromissos_recorrentes").insert({
+          ...dados,
+          inicio: primeiroDia(competencia),
+          ativo: true,
+          criado_por: usuarioAtual.id,
+        });
     if (error) {
       alert(error.message);
       return;
     }
-    setDescricao("");
-    setBeneficiario("");
-    setCategoria("");
-    setValor("");
+    limparFormulario();
     await carregar();
-    alert("Compromisso mensal salvo.");
+    alert(
+      estavaEditando
+        ? "Compromisso recorrente atualizado. A altera\u00e7\u00e3o valer\u00e1 para as pr\u00f3ximas listas geradas."
+        : "Compromisso mensal salvo."
+    );
+  };
+
+  const editarCompromisso = (item: Compromisso) => {
+    setCompromissoEditando(item.id);
+    setDescricao(item.descricao);
+    setEscopo(item.escopo);
+    setBeneficiario(item.beneficiario);
+    setCategoria(item.categoria);
+    setValor(String(item.valor_padrao).replace(".", ","));
+    setDia(String(item.dia_vencimento));
+    setBanco(item.banco);
+    setUnidade(item.unidade || configuracoes.unidades[0] || "CEDEP");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const excluirCompromisso = async (item: Compromisso) => {
+    if (!supabase) return;
+    if (!window.confirm('Encerrar o compromisso recorrente "' + item.descricao + '"? Ele n\u00e3o gerar\u00e1 novos meses, mas o hist\u00f3rico ser\u00e1 preservado.')) return;
+    const { error } = await supabase
+      .from("compromissos_recorrentes")
+      .update({
+        ativo: false,
+        fim: primeiroDia(competencia),
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq("id", item.id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    if (compromissoEditando === item.id) limparFormulario();
+    await carregar();
+    alert("Compromisso recorrente encerrado sem apagar o hist\u00f3rico.");
   };
 
   const gerarMes = async () => {
@@ -364,7 +422,7 @@ export default function CompromissosMensais({
       </section>
 
       <section style={estilos.caixa}>
-        <h2>Novo compromisso recorrente</h2>
+        <h2>{compromissoEditando ? "Editar compromisso recorrente" : "Novo compromisso recorrente"}</h2>
         <div style={estilos.formGrid}>
           <Campo label="Descrição" value={descricao} onChange={setDescricao} />
           <label style={estilos.campo}>
@@ -374,6 +432,11 @@ export default function CompromissosMensais({
               {usuarioAtual.perfil !== "Secretaria" && <option>Pessoal</option>}
             </select>
           </label>
+          {escopo === "Pessoal" && (
+            <div style={estilos.avisoPessoal}>
+              Este compromisso ser&aacute; exibido somente em Despesas Pessoais e n&atilde;o ser&aacute; enviado ao Contas a Pagar nem ao caixa da escola.
+            </div>
+          )}
           <Campo label="Funcionário / favorecido" value={beneficiario} onChange={setBeneficiario} />
           <label style={estilos.campo}>
             <strong>Tipo de saída</strong>
@@ -397,10 +460,20 @@ export default function CompromissosMensais({
           <Campo label="Valor padrão" value={valor} onChange={setValor} placeholder="Ex.: 1.500,00" />
           <Campo label="Dia do vencimento" type="number" value={dia} onChange={setDia} />
           <Campo label="Banco / conta" value={banco} onChange={setBanco} />
-          <Campo label="Unidade" value={unidade} onChange={setUnidade} />
+          <label style={estilos.campo}>
+            <strong>Unidade</strong>
+            <select style={estilos.input} value={unidade} onChange={(e) => setUnidade(e.target.value)}>
+              {configuracoes.unidades.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
         </div>
         <div style={estilos.acoes}>
-          <button style={estilos.botaoPrincipal} onClick={salvarCompromisso}>Salvar compromisso</button>
+          <button style={estilos.botaoPrincipal} onClick={salvarCompromisso}>
+            {compromissoEditando ? "Salvar altera\u00e7\u00f5es" : "Salvar compromisso"}
+          </button>
+          {compromissoEditando && (
+            <button style={estilos.botaoSecundario} onClick={limparFormulario}>Cancelar edi\u00e7\u00e3o</button>
+          )}
           <button style={estilos.botaoGerar} onClick={gerarMes}>Gerar lista de {competencia.split("-").reverse().join("/")}</button>
         </div>
       </section>
@@ -408,7 +481,7 @@ export default function CompromissosMensais({
       <section style={{ ...estilos.caixa, marginTop: 24 }}>
         <h2>Modelos que se repetem</h2>
         <div style={estilos.modelos}>
-          {compromissos.map((item) => (
+          {compromissos.filter((item) => !item.fim).map((item) => (
             <div key={item.id} style={estilos.modelo}>
               <div>
                 <strong>{item.descricao}</strong>
@@ -417,9 +490,13 @@ export default function CompromissosMensais({
                   {item.beneficiario ? ` • ${item.beneficiario}` : ""}
                 </div>
               </div>
-              <button style={estilos.botaoSecundario} onClick={() => alternarAtivo(item)}>
-                {item.ativo ? "Pausar" : "Reativar"}
-              </button>
+              <div style={estilos.acoesLinha}>
+                <button style={estilos.botaoSecundario} onClick={() => editarCompromisso(item)}>Editar</button>
+                <button style={estilos.botaoSecundario} onClick={() => alternarAtivo(item)}>
+                  {item.ativo ? "Pausar" : "Reativar"}
+                </button>
+                <button style={estilos.botaoExcluir} onClick={() => void excluirCompromisso(item)}>Excluir</button>
+              </div>
             </div>
           ))}
         </div>
@@ -527,4 +604,6 @@ const estilos: Record<string, CSSProperties> = {
   acoesLinha: { display: "flex", gap: 7 },
   botaoPagar: { background: "#15803d", color: "white", border: 0, borderRadius: 7, padding: "8px 10px", cursor: "pointer" },
   botaoAbrirContas: { background: "#17233a", color: "white", border: 0, borderRadius: 9, padding: "12px 14px", cursor: "pointer", fontWeight: 700 },
+  botaoExcluir: { background: "#fff", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 8, padding: "9px 12px", cursor: "pointer" },
+  avisoPessoal: { gridColumn: "1 / -1", background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", borderRadius: 9, padding: "12px 14px", lineHeight: 1.5 },
 };
