@@ -1202,6 +1202,16 @@ function Professores({
         return;
       }
 
+      if (
+        pagarPedagio &&
+        converterNumero(valorPedagio) <= 0
+      ) {
+        alert(
+          "Informe um valor válido para o pedágio."
+        );
+        return;
+      }
+
       const registro: LancamentoProfessor =
         {
           id: `aula-${Date.now()}-${Math.random()}`,
@@ -1732,8 +1742,7 @@ function Professores({
                 />
                 Pagar pedágio neste dia
               </label>
-              {pagarPedagio &&
-                administrador && (
+              {pagarPedagio && (
                 <Campo
                   label="Valor do pedágio"
                   value={valorPedagio}
