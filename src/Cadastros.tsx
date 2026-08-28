@@ -582,67 +582,49 @@ function Cadastros({
     );
   };
 
-  const salvarParceiro = () => {
+  const salvarParceiro = async () => {
     if (!parceiro.nome.trim()) {
-      alert(
-        "Informe o nome do parceiro."
-      );
+      alert("Informe o nome do parceiro ou funcionário.");
       return;
     }
-
-    if (
-      campoIncompleto(
-        parceiro.documento,
-        [11, 14]
-      )
-    ) {
-      alert(
-        "O CPF ou CNPJ está incompleto."
-      );
+    if (!parceiro.tipo.trim()) {
+      alert("Selecione o tipo de cadastro.");
       return;
     }
-
-    if (
-      campoIncompleto(
-        parceiro.telefone,
-        [10, 11]
-      )
-    ) {
-      alert(
-        "O telefone está incompleto."
-      );
+    if (campoIncompleto(parceiro.documento, [11, 14])) {
+      alert("O CPF ou CNPJ está incompleto.");
+      return;
+    }
+    if (campoIncompleto(parceiro.telefone, [10, 11])) {
+      alert("O telefone está incompleto.");
       return;
     }
 
     const registro: Parceiro = {
       ...parceiro,
-      id:
-        editando ??
-        `parceiro-${Date.now()}`,
+      id: editando ?? `parceiro-${Date.now()}`,
       nome: parceiro.nome.trim(),
     };
-
-    setDados((atual) => ({
-      ...atual,
+    const proximos: DadosCadastros = {
+      ...dados,
       parceiros: editando
-        ? atual.parceiros.map(
-            (item) =>
-              item.id === editando
-                ? registro
-                : item
-          )
-        : [
-            ...atual.parceiros,
-            registro,
-          ],
-    }));
+        ? dados.parceiros.map((item) => item.id === editando ? registro : item)
+        : [...dados.parceiros, registro],
+    };
 
-    limpar();
-    alert(
-      editando
-        ? "Parceiro atualizado."
-        : "Parceiro cadastrado."
-    );
+    try {
+      const confirmados = await salvarChaveCompartilhada<DadosCadastros>(
+        CHAVE_CADASTROS,
+        proximos,
+        usuarioAtual.id
+      );
+      setDados(confirmados);
+      limpar();
+      alert(editando ? "Cadastro atualizado." : "Cadastro realizado.");
+    } catch (erro) {
+      console.error("Erro ao salvar parceiro ou funcionário:", erro);
+      alert("Não foi possível confirmar o cadastro na nuvem. Tente novamente.");
+    }
   };
 
   const editarAluno = (
@@ -816,7 +798,7 @@ function Cadastros({
             }
           >
             Alunos, responsáveis
-            financeiros, parceiros e
+            financeiros, parceiros, funcionários e
             escolas da plataforma.
           </p>
         </div>
@@ -851,7 +833,7 @@ function Cadastros({
                   : "#0d1b30",
             }}
           >
-            {item}
+            {item === "Parceiros" ? "Parceiros e funcionários" : item}
           </button>
         ))}
       </div>
@@ -1420,8 +1402,8 @@ function Cadastros({
           >
             <h2>
               {editando
-                ? "Editar parceiro"
-                : "Novo parceiro"}
+                ? "Editar parceiro ou funcionário"
+                : "Novo parceiro ou funcionário"}
             </h2>
 
             <div
@@ -1464,21 +1446,26 @@ function Cadastros({
                 }
               />
 
-              <Campo
-                label="Tipo de parceria"
-                value={
-                  parceiro.tipo
-                }
-                placeholder="Ex.: Professor, fornecedor"
-                onChange={(valor) =>
-                  setParceiro(
-                    (atual) => ({
-                      ...atual,
-                      tipo: valor,
-                    })
-                  )
-                }
-              />
+              <label style={estilos.campo}>
+                <strong>Tipo de cadastro</strong>
+                <select
+                  style={estilos.input}
+                  value={parceiro.tipo}
+                  onChange={(evento) =>
+                    setParceiro((atual) => ({ ...atual, tipo: evento.target.value }))
+                  }
+                >
+                  <option value="">Selecione...</option>
+                  <option value="Funcionário">Funcionário</option>
+                  <option value="Professor">Professor</option>
+                  <option value="Fornecedor">Fornecedor</option>
+                  <option value="Parceiro comercial">Parceiro comercial</option>
+                  <option value="Outros">Outros</option>
+                  {parceiro.tipo && !["Funcionário","Professor","Fornecedor","Parceiro comercial","Outros"].includes(parceiro.tipo) ? (
+                    <option value={parceiro.tipo}>{parceiro.tipo}</option>
+                  ) : null}
+                </select>
+              </label>
 
               <Campo
                 label="Telefone"
@@ -1545,7 +1532,7 @@ function Cadastros({
           </section>
 
           <Lista
-            titulo="Parceiros cadastrados"
+            titulo="Parceiros e funcionários cadastrados"
             busca={busca}
             setBusca={setBusca}
             vazio={

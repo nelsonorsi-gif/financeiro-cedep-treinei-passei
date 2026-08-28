@@ -4,6 +4,8 @@ import {
   carregarConfiguracoes,
 } from "./Configuracoes";
 import { supabase } from "./lib/supabase";
+import { CHAVE_CADASTROS, type Parceiro } from "./Cadastros";
+import { CHAVE_CATEGORIAS_PESSOAIS, CHAVE_PAGAMENTOS_PESSOAIS } from "./DespesasPessoais";
 
 export type PagamentoCompromisso = {
   id: string;
@@ -49,6 +51,18 @@ type Ocorrencia = {
 };
 
 const CHAVE_PESSOAIS = "financeiro-cedep-despesas-pessoais";
+const categoriasPessoaisPadrao = ["Alimentação","Casa","Educação","Lazer","Saúde","Transporte","Vestuário","Outros"];
+const pagamentosPessoaisPadrao = ["Dinheiro","PIX","Sicoob","Cartão de crédito","Cartão de débito"];
+const lerListaLocal = <T,>(chave: string, padrao: T[]): T[] => {
+  try { const valor=JSON.parse(localStorage.getItem(chave)||"null"); return Array.isArray(valor)?valor:padrao; } catch { return padrao; }
+};
+const lerFuncionarios = (): Parceiro[] => {
+  try {
+    const dados=JSON.parse(localStorage.getItem(CHAVE_CADASTROS)||"null");
+    if(!Array.isArray(dados?.parceiros)) return [];
+    return (dados.parceiros as Parceiro[]).filter((item) => item.situacao==="Ativo" && item.tipo.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().includes("funcionario"));
+  } catch { return []; }
+};
 
 const moeda = (valor: number) =>
   valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -103,6 +117,9 @@ export default function CompromissosMensais({
   const [filtro, setFiltro] = useState("Todos");
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
   const [filtroBeneficiario, setFiltroBeneficiario] = useState("Todos");
+  const [funcionarios, setFuncionarios] = useState<Parceiro[]>(lerFuncionarios);
+  const [categoriasPessoais, setCategoriasPessoais] = useState<string[]>(() => lerListaLocal(CHAVE_CATEGORIAS_PESSOAIS, categoriasPessoaisPadrao));
+  const [pagamentosPessoais, setPagamentosPessoais] = useState<string[]>(() => lerListaLocal(CHAVE_PAGAMENTOS_PESSOAIS, pagamentosPessoaisPadrao));
   const configuracoes =
     useMemo(
       carregarConfiguracoes,
@@ -140,6 +157,20 @@ export default function CompromissosMensais({
     void carregar().catch((erro) => console.error("Erro ao carregar compromissos:", erro));
   }, [carregar]);
 
+  useEffect(() => {
+    const atualizarListas = () => {
+      setFuncionarios(lerFuncionarios());
+      setCategoriasPessoais(lerListaLocal(CHAVE_CATEGORIAS_PESSOAIS, categoriasPessoaisPadrao));
+      setPagamentosPessoais(lerListaLocal(CHAVE_PAGAMENTOS_PESSOAIS, pagamentosPessoaisPadrao));
+    };
+    window.addEventListener("storage", atualizarListas);
+    window.addEventListener("financeiro-despesas-pessoais-atualizadas", atualizarListas);
+    return () => {
+      window.removeEventListener("storage", atualizarListas);
+      window.removeEventListener("financeiro-despesas-pessoais-atualizadas", atualizarListas);
+    };
+  }, []);
+
   const limparFormulario = () => {
     setDescricao("");
     setEscopo("Empresarial");
@@ -158,6 +189,10 @@ export default function CompromissosMensais({
       alert("Informe descri\u00e7\u00e3o e valor v\u00e1lido.");
       return;
     }
+    if (escopo === "Pessoal" && (!categoria.trim() || !banco.trim())) {
+      alert("Informe categoria e forma de pagamento da despesa pessoal.");
+      return;
+    }
     const estavaEditando = Boolean(compromissoEditando);
     const dados = {
       descricao: descricao.trim(),
@@ -167,7 +202,7 @@ export default function CompromissosMensais({
       valor_padrao: valorNumerico,
       dia_vencimento: Math.max(1, Math.min(31, Number(dia))),
       banco: banco.trim(),
-      unidade: unidade.trim() || configuracoes.unidades[0] || "CEDEP",
+      unidade: escopo === "Pessoal" ? "" : unidade.trim() || configuracoes.unidades[0] || "CEDEP",
       atualizado_em: new Date().toISOString(),
     };
     const { error } = compromissoEditando
@@ -427,7 +462,11 @@ export default function CompromissosMensais({
           <Campo label="Descrição" value={descricao} onChange={setDescricao} />
           <label style={estilos.campo}>
             <strong>Grupo</strong>
-            <select style={estilos.input} value={escopo} onChange={(e) => setEscopo(e.target.value as "Empresarial" | "Pessoal")}>
+            <select style={estilos.input} value={escopo} onChange={(e) => {
+              setEscopo(e.target.value as "Empresarial" | "Pessoal");
+              setCategoria("");
+              setBanco("");
+            }}>
               <option>Empresarial</option>
               {usuarioAtual.perfil !== "Secretaria" && <option>Pessoal</option>}
             </select>
@@ -437,35 +476,33 @@ export default function CompromissosMensais({
               Este compromisso ser&aacute; exibido somente em Despesas Pessoais e n&atilde;o ser&aacute; enviado ao Contas a Pagar nem ao caixa da escola.
             </div>
           )}
-          <Campo label="Funcionário / favorecido" value={beneficiario} onChange={setBeneficiario} />
-          <label style={estilos.campo}>
-            <strong>Tipo de saída</strong>
-            <select
-              style={estilos.input}
-              value={categoria}
-              onChange={(e) =>
-                setCategoria(e.target.value)
-              }
-            >
-              <option value="">Selecione...</option>
-              {configuracoes.tiposSaida.map(
-                (item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                )
-              )}
-            </select>
-          </label>
+          <CampoComLista label={escopo === "Pessoal" ? "Favorecido (opcional)" : "Funcionário / favorecido"} value={beneficiario} onChange={setBeneficiario} opcoes={funcionarios.map((item) => item.nome)} listaId="funcionarios-compromissos" placeholder="Digite ou selecione um funcionário" />
+          {escopo === "Pessoal" ? (
+            <CampoComLista label="Categoria" value={categoria} onChange={setCategoria} opcoes={categoriasPessoais} listaId="categorias-pessoais-compromissos" placeholder="Digite ou selecione" />
+          ) : (
+            <label style={estilos.campo}>
+              <strong>Tipo de saída</strong>
+              <select style={estilos.input} value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+                <option value="">Selecione...</option>
+                {configuracoes.tiposSaida.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+          )}
           <Campo label="Valor padrão" value={valor} onChange={setValor} placeholder="Ex.: 1.500,00" />
           <Campo label="Dia do vencimento" type="number" value={dia} onChange={setDia} />
-          <Campo label="Banco / conta" value={banco} onChange={setBanco} />
-          <label style={estilos.campo}>
-            <strong>Unidade</strong>
-            <select style={estilos.input} value={unidade} onChange={(e) => setUnidade(e.target.value)}>
-              {configuracoes.unidades.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </label>
+          {escopo === "Pessoal" ? (
+            <CampoComLista label="Forma de pagamento" value={banco} onChange={setBanco} opcoes={pagamentosPessoais} listaId="pagamentos-pessoais-compromissos" placeholder="Digite ou selecione" />
+          ) : (
+            <>
+              <Campo label="Banco / conta" value={banco} onChange={setBanco} />
+              <label style={estilos.campo}>
+                <strong>Unidade</strong>
+                <select style={estilos.input} value={unidade} onChange={(e) => setUnidade(e.target.value)}>
+                  {configuracoes.unidades.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </label>
+            </>
+          )}
         </div>
         <div style={estilos.acoes}>
           <button style={estilos.botaoPrincipal} onClick={salvarCompromisso}>
@@ -572,6 +609,10 @@ export default function CompromissosMensais({
 
 function Campo({ label, value, onChange, type = "text", placeholder = "" }: { label: string; value: string; onChange: (valor: string) => void; type?: string; placeholder?: string }) {
   return <label style={estilos.campo}><strong>{label}</strong><input style={estilos.input} type={type} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} /></label>;
+}
+
+function CampoComLista({ label, value, onChange, opcoes, listaId, placeholder }: { label: string; value: string; onChange: (valor: string) => void; opcoes: string[]; listaId: string; placeholder: string }) {
+  return <label style={estilos.campo}><strong>{label}</strong><input list={listaId} style={estilos.input} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} /><datalist id={listaId}>{opcoes.map((item) => <option key={item} value={item} />)}</datalist></label>;
 }
 
 function Card({ titulo, valor }: { titulo: string; valor: string }) {
