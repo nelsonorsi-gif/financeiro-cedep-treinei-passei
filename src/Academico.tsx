@@ -12,6 +12,7 @@ import {
   carregarCatalogoCursos,
   type Curso,
 } from "./CatalogoCursos";
+import { salvarChaveCompartilhada } from "./servicos/sincronizacaoAutomatica";
 
 export type Turma = {
   id: string;
@@ -147,10 +148,8 @@ export default function Academico({
   ] = useState<Matricula[]>(
     inicial.matriculas
   );
-  const [alunos] =
-    useState<Aluno[]>(
-      lerAlunos
-    );
+  const [alunos, setAlunos] =
+    useState<Aluno[]>(lerAlunos);
   const [catalogo, setCatalogo] =
     useState(
       carregarCatalogoCursos
@@ -189,6 +188,16 @@ export default function Academico({
   ] = useState("");
   const [busca, setBusca] =
     useState("");
+
+  useEffect(() => {
+    const atualizarAlunos = (evento: StorageEvent) => {
+      if (!evento.key || evento.key === CHAVE_CADASTROS) {
+        setAlunos(lerAlunos());
+      }
+    };
+    window.addEventListener("storage", atualizarAlunos);
+    return () => window.removeEventListener("storage", atualizarAlunos);
+  }, []);
 
   useEffect(() => {
     const anterior =
@@ -348,7 +357,7 @@ export default function Academico({
     });
   };
 
-  const matricular = () => {
+  const matricular = async () => {
     if (!alunoId || !turmaId) {
       alert(
         "Selecione o aluno e a turma."
@@ -374,30 +383,36 @@ export default function Academico({
       (item) =>
         item.id === alunoId
     );
-    setMatriculas(
-      (atuais) => [
-        ...atuais,
+    const novaMatricula = {
+      id: `matricula-${Date.now()}`,
+      aluno_id: alunoId,
+      aluno_nome: aluno?.nome ?? "Aluno",
+      turma_id: turmaId,
+      status: "Ativa",
+      data_matricula: new Date().toISOString().slice(0, 10),
+      observacao: observacao.trim(),
+      criado_por: usuarioAtual.id,
+    } as Matricula & { criado_por: string };
+
+    try {
+      const confirmados = await salvarChaveCompartilhada<DadosAcademicos>(
+        CHAVE_ACADEMICO,
         {
-          id: `matricula-${Date.now()}`,
-          aluno_id: alunoId,
-          aluno_nome:
-            aluno?.nome ??
-            "Aluno",
-          turma_id: turmaId,
-          status: "Ativa",
-          data_matricula:
-            new Date()
-              .toISOString()
-              .slice(0, 10),
-          observacao:
-            observacao.trim(),
-          criado_por:
-            usuarioAtual.id,
-        } as Matricula & {
-          criado_por: string;
+          turmas,
+          matriculas: [...matriculas, novaMatricula],
+          presencas: lerAcademico().presencas ?? [],
         },
-      ]
-    );
+        usuarioAtual.id
+      );
+      setTurmas(confirmados.turmas);
+      setMatriculas(confirmados.matriculas);
+    } catch (erro) {
+      console.error("Erro ao salvar matr\u00edcula:", erro);
+      alert(
+        "N\u00e3o foi poss\u00edvel confirmar a matr\u00edcula na nuvem. Tente novamente."
+      );
+      return;
+    }
     setAlunoId("");
     setTurmaId("");
     setObservacao("");
@@ -423,7 +438,7 @@ export default function Academico({
     );
   };
 
-  const excluirMatricula = (
+  const excluirMatricula = async (
     matricula: Matricula
   ) => {
     if (
@@ -433,12 +448,23 @@ export default function Academico({
     ) {
       return;
     }
-    setMatriculas((atuais) =>
-      atuais.filter(
-        (item) =>
-          item.id !== matricula.id
-      )
-    );
+    try {
+      const confirmados = await salvarChaveCompartilhada<DadosAcademicos>(
+        CHAVE_ACADEMICO,
+        {
+          turmas,
+          matriculas: matriculas.filter((item) => item.id !== matricula.id),
+          presencas: lerAcademico().presencas ?? [],
+        },
+        usuarioAtual.id,
+        { matriculas: [matricula.id] }
+      );
+      setTurmas(confirmados.turmas);
+      setMatriculas(confirmados.matriculas);
+    } catch (erro) {
+      console.error("Erro ao excluir matr\u00edcula:", erro);
+      alert("N\u00e3o foi poss\u00edvel confirmar a exclus\u00e3o da matr\u00edcula na nuvem.");
+    }
   };
 
   const matriculasFiltradas =

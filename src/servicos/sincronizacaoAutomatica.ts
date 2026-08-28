@@ -73,6 +73,11 @@ const serializar = (
   valor: unknown
 ) => JSON.stringify(valor);
 
+const CHAVES_COM_MESCLAGEM = new Set<string>([
+  "financeiro-cedep-cadastros",
+  "financeiro-cedep-academico",
+]);
+
 const salvarValorLocal = (
   chave: string,
   valor: unknown
@@ -97,6 +102,41 @@ const clienteObrigatorio = () => {
 
   return supabase;
 };
+
+export async function salvarChaveCompartilhada<T>(
+  chave: string,
+  valor: T,
+  usuarioId: string,
+  remocoes: Record<string, string[]> = {}
+): Promise<T> {
+  const cliente = clienteObrigatorio();
+
+  if (CHAVES_COM_MESCLAGEM.has(chave)) {
+    const { data, error } = await cliente.rpc("mesclar_erp_dados", {
+      p_chave: chave,
+      p_valor: valor,
+      p_updated_by: usuarioId,
+      p_remocoes: remocoes,
+    });
+    if (error) throw error;
+    const confirmado = (data ?? valor) as T;
+    salvarValorLocal(chave, confirmado);
+    return confirmado;
+  }
+
+  const { error } = await cliente.from("erp_dados").upsert(
+    {
+      chave,
+      valor,
+      updated_by: usuarioId,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "chave" }
+  );
+  if (error) throw error;
+  salvarValorLocal(chave, valor);
+  return valor;
+}
 
 const enviarRegistrosLocais =
   async (
@@ -380,16 +420,37 @@ export function iniciarSincronizacaoAutomatica(
 
     enviando = true;
 
-    const { error } =
-      await cliente
-        .from("erp_dados")
-        .upsert(alterados, {
-          onConflict: "chave",
-        });
+    const especiais = alterados.filter((item) =>
+      CHAVES_COM_MESCLAGEM.has(item.chave)
+    );
+    const comuns = alterados.filter((item) =>
+      !CHAVES_COM_MESCLAGEM.has(item.chave)
+    );
+
+    let erro: unknown = null;
+    try {
+      for (const item of especiais) {
+        const confirmado = await salvarChaveCompartilhada(
+          item.chave,
+          item.valor,
+          usuarioId
+        );
+        conhecidos.set(item.chave, serializar(confirmado));
+      }
+
+      if (comuns.length > 0) {
+        const resultado = await cliente
+          .from("erp_dados")
+          .upsert(comuns, { onConflict: "chave" });
+        if (resultado.error) throw resultado.error;
+      }
+    } catch (falha) {
+      erro = falha;
+    }
 
     enviando = false;
 
-    if (!error) {
+    if (!erro) {
       localStorage.setItem(
         "financeiro-cedep-ultima-sincronizacao",
         new Date().toLocaleString(
@@ -399,7 +460,12 @@ export function iniciarSincronizacaoAutomatica(
     } else {
       console.error(
         "Erro na sincronização automática:",
-        error
+        erro
+      );
+      window.dispatchEvent(
+        new CustomEvent("financeiro-sincronizacao-erro", {
+          detail: { erro },
+        })
       );
     }
   };

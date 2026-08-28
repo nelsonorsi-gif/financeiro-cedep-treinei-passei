@@ -18,6 +18,7 @@ import {
 import Escolas from "./Escolas";
 import AlunoPerfil from "./AlunoPerfil";
 import type { UsuarioSessao } from "./Acesso";
+import { salvarChaveCompartilhada } from "./servicos/sincronizacaoAutomatica";
 
 type Situacao = "Ativo" | "Inativo";
 
@@ -465,7 +466,7 @@ function Cadastros({
     setEditando(null);
   };
 
-  const salvarAluno = () => {
+  const salvarAluno = async () => {
     if (!aluno.nome.trim()) {
       alert(
         "Informe o nome do aluno."
@@ -549,20 +550,29 @@ function Cadastros({
         aluno.planoNome.trim(),
     };
 
-    setDados((atual) => ({
-      ...atual,
+    const proximos: DadosCadastros = {
+      ...dados,
       alunos: editando
-        ? atual.alunos.map(
-            (item) =>
-              item.id === editando
-                ? registro
-                : item
+        ? dados.alunos.map((item) =>
+            item.id === editando ? registro : item
           )
-        : [
-            ...atual.alunos,
-            registro,
-          ],
-    }));
+        : [...dados.alunos, registro],
+    };
+
+    try {
+      const confirmados = await salvarChaveCompartilhada(
+        CHAVE_CADASTROS,
+        proximos,
+        usuarioAtual.id
+      );
+      setDados(confirmados);
+    } catch (erro) {
+      console.error("Erro ao salvar aluno:", erro);
+      alert(
+        "N\u00e3o foi poss\u00edvel confirmar o cadastro do aluno na nuvem. Tente novamente."
+      );
+      return;
+    }
 
     limpar();
     alert(
@@ -710,7 +720,7 @@ function Cadastros({
     }));
   };
 
-  const excluir = (
+  const excluir = async (
     id: string,
     nome: string
   ) => {
@@ -722,15 +732,26 @@ function Cadastros({
       return;
     }
 
-    setDados((atual) => ({
-      alunos: atual.alunos.filter(
-        (item) => item.id !== id
-      ),
-      parceiros:
-        atual.parceiros.filter(
-          (item) => item.id !== id
-        ),
-    }));
+    const campo = dados.alunos.some((item) => item.id === id)
+      ? "alunos"
+      : "parceiros";
+    const proximos: DadosCadastros = {
+      alunos: dados.alunos.filter((item) => item.id !== id),
+      parceiros: dados.parceiros.filter((item) => item.id !== id),
+    };
+
+    try {
+      const confirmados = await salvarChaveCompartilhada(
+        CHAVE_CADASTROS,
+        proximos,
+        usuarioAtual.id,
+        { [campo]: [id] }
+      );
+      setDados(confirmados);
+    } catch (erro) {
+      console.error("Erro ao excluir cadastro:", erro);
+      alert("N\u00e3o foi poss\u00edvel confirmar a exclus\u00e3o na nuvem.");
+    }
   };
 
   const alunosFiltrados =
