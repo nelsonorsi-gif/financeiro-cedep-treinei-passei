@@ -47,9 +47,9 @@ function Relatorios({
   ] = useState("Todos");
 
   const [
-    banco,
-    setBanco,
-  ] = useState("Todos");
+    bancosSelecionados,
+    setBancosSelecionados,
+  ] = useState<string[]>([]);
 
   const [
     unidade,
@@ -57,9 +57,9 @@ function Relatorios({
   ] = useState("Todas");
 
   const [
-    competencia,
-    setCompetencia,
-  ] = useState("Todas");
+    competenciasSelecionadas,
+    setCompetenciasSelecionadas,
+  ] = useState<string[]>([]);
 
   const [
     dataInicial,
@@ -196,10 +196,10 @@ function Relatorios({
               item.saida > 0);
 
           const correspondeBanco =
-            banco ===
-              "Todos" ||
-            item.formaPagamento.trim() ===
-              banco;
+            bancosSelecionados.length === 0 ||
+            bancosSelecionados.includes(
+              item.formaPagamento.trim()
+            );
 
           const correspondeUnidade =
             unidade ===
@@ -208,10 +208,10 @@ function Relatorios({
               unidade;
 
           const correspondeCompetencia =
-            competencia ===
-              "Todas" ||
-            item.competencia ===
-              competencia;
+            competenciasSelecionadas.length === 0 ||
+            competenciasSelecionadas.includes(
+              item.competencia || ""
+            );
 
           const correspondeBusca =
             item.descricao
@@ -260,9 +260,9 @@ function Relatorios({
     }, [
       lancamentos,
       tipo,
-      banco,
+      bancosSelecionados,
       unidade,
-      competencia,
+      competenciasSelecionadas,
       dataInicial,
       dataFinal,
       busca,
@@ -319,9 +319,9 @@ function Relatorios({
     setPaginaResultado(1);
   }, [
     tipo,
-    banco,
+    bancosSelecionados,
     unidade,
-    competencia,
+    competenciasSelecionadas,
     dataInicial,
     dataFinal,
     busca,
@@ -472,15 +472,10 @@ function Relatorios({
       let nomeArquivo =
         "relatorio-financeiro";
 
-      if (
-        competencia !==
-        "Todas"
-      ) {
-        nomeArquivo +=
-          `-${competencia.replace(
-            "/",
-            "-"
-          )}`;
+      if (competenciasSelecionadas.length === 1) {
+        nomeArquivo += `-${competenciasSelecionadas[0].replace("/", "-")}`;
+      } else if (competenciasSelecionadas.length > 1) {
+        nomeArquivo += `-${competenciasSelecionadas.length}-competencias`;
       }
 
       XLSX.writeFile(
@@ -506,11 +501,15 @@ function Relatorios({
       paginas.push(filtrados.slice(indice, indice + 32));
     }
     const resumoFiltros = [
-      competencia !== "Todas" ? `Competência: ${competencia}` : "",
+      competenciasSelecionadas.length
+        ? `Competências: ${competenciasSelecionadas.join(", ")}`
+        : "",
       dataInicial ? `De: ${formatarDataTela(dataInicial)}` : "",
       dataFinal ? `Até: ${formatarDataTela(dataFinal)}` : "",
       tipo !== "Todos" ? `Tipo: ${tipo}` : "",
-      banco !== "Todos" ? `Banco: ${banco}` : "",
+      bancosSelecionados.length
+        ? `Bancos: ${bancosSelecionados.join(", ")}`
+        : "",
       unidade !== "Todas" ? `Unidade: ${unidade}` : "",
     ]
       .filter(Boolean)
@@ -595,13 +594,11 @@ function Relatorios({
     () => {
       setTipo("Todos");
 
-      setBanco("Todos");
+      setBancosSelecionados([]);
 
       setUnidade("Todas");
 
-      setCompetencia(
-        "Todas"
-      );
+      setCompetenciasSelecionadas([]);
 
       setDataInicial("");
 
@@ -698,22 +695,12 @@ function Relatorios({
             estilos.filtros
           }
         >
-          <CampoSelect
-            label="Competência"
-
-            value={
-              competencia
-            }
-
-            onChange={
-              setCompetencia
-            }
-
-            opcoes={[
-              "Todas",
-
-              ...competencias,
-            ]}
+          <CampoMultiSelect
+            label="Competências"
+            valores={competenciasSelecionadas}
+            onChange={setCompetenciasSelecionadas}
+            opcoes={competencias}
+            textoTodas="Todas as competências"
           />
 
           <CampoSelect
@@ -734,20 +721,12 @@ function Relatorios({
             ]}
           />
 
-          <CampoSelect
-            label="Banco / Conta"
-
-            value={banco}
-
-            onChange={
-              setBanco
-            }
-
-            opcoes={[
-              "Todos",
-
-              ...bancos,
-            ]}
+          <CampoMultiSelect
+            label="Bancos / Contas"
+            valores={bancosSelecionados}
+            onChange={setBancosSelecionados}
+            opcoes={bancos}
+            textoTodas="Todos os bancos"
           />
 
           <CampoSelect
@@ -872,9 +851,8 @@ function Relatorios({
           Período selecionado:
         </strong>{" "}
 
-        {competencia !==
-        "Todas"
-          ? competencia
+        {competenciasSelecionadas.length
+          ? competenciasSelecionadas.join(", ")
           : "Todos os períodos"}
 
         {dataInicial && (
@@ -1310,6 +1288,63 @@ function CampoSelect({
   );
 }
 
+function CampoMultiSelect({
+  label,
+  valores,
+  onChange,
+  opcoes,
+  textoTodas,
+}: {
+  label: string;
+  valores: string[];
+  onChange: (valores: string[]) => void;
+  opcoes: string[];
+  textoTodas: string;
+}) {
+  const resumo =
+    valores.length === 0
+      ? textoTodas
+      : valores.length === 1
+        ? valores[0]
+        : `${valores.length} itens selecionados`;
+
+  const alternar = (opcao: string) => {
+    onChange(
+      valores.includes(opcao)
+        ? valores.filter((item) => item !== opcao)
+        : [...valores, opcao]
+    );
+  };
+
+  return (
+    <div style={estilos.campoGrupo}>
+      <strong>{label}</strong>
+      <details style={estilos.multiSelect}>
+        <summary style={estilos.multiResumo}>{resumo}</summary>
+        <div style={estilos.multiMenu}>
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            style={estilos.multiTodos}
+          >
+            Exibir todos
+          </button>
+          {opcoes.map((opcao) => (
+            <label key={opcao} style={estilos.multiOpcao}>
+              <input
+                type="checkbox"
+                checked={valores.includes(opcao)}
+                onChange={() => alternar(opcao)}
+              />
+              <span>{opcao}</span>
+            </label>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function CampoData({
   label,
 
@@ -1428,6 +1463,48 @@ const estilos: Record<
     gap: 7,
   },
 
+  multiSelect: {
+    position: "relative",
+  },
+  multiResumo: {
+    padding: "13px 14px",
+    border: "1px solid #ccd3dd",
+    borderRadius: 9,
+    fontSize: 15,
+    background: "white",
+    cursor: "pointer",
+    listStyle: "none",
+  },
+  multiMenu: {
+    position: "absolute",
+    zIndex: 20,
+    width: "100%",
+    maxHeight: 280,
+    overflowY: "auto",
+    marginTop: 5,
+    padding: 10,
+    background: "white",
+    border: "1px solid #ccd3dd",
+    borderRadius: 9,
+    boxShadow: "0 10px 28px rgba(15,23,42,.16)",
+  },
+  multiOpcao: {
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
+    padding: "8px 6px",
+    cursor: "pointer",
+  },
+  multiTodos: {
+    width: "100%",
+    padding: "8px 10px",
+    marginBottom: 6,
+    border: "1px solid #cbd5e1",
+    borderRadius: 7,
+    background: "#f8fafc",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
   input: {
     padding: "13px 14px",
 
