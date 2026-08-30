@@ -133,6 +133,8 @@ type FormularioLancamento = {
 };
 
 type ResumoBanco = {
+  chave: string;
+
   nome: string;
 
   entradas: number;
@@ -304,6 +306,24 @@ const criarFormularioVazio =
 /* =========================================================
    APP
 ========================================================= */
+
+const agruparBancoOuCartao = (valor: string) => {
+  const texto = valor.trim().replace(/\s+/g, " ") || "Não informado";
+  const chave = texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleUpperCase("pt-BR");
+  const ehCartao =
+    chave.includes("CARTAO") ||
+    /(^|\s)C\.?\s*(CREDITO|DEBITO)(\s|$)/.test(chave);
+
+  return ehCartao
+    ? { chave: "CARTOES", nome: "Cartões" }
+    : {
+        chave,
+        nome: chave === "NAO INFORMADO" ? "Não informado" : texto.toLocaleUpperCase("pt-BR"),
+      };
+};
 
 function App() {
   const [
@@ -541,6 +561,11 @@ function App() {
     useState<string | null>(
       null
     );
+
+  const [competenciaBancos, setCompetenciaBancos] = useState("Todas");
+  const [dataInicialBancos, setDataInicialBancos] = useState("");
+  const [dataFinalBancos, setDataFinalBancos] = useState("");
+  const [unidadeBancos, setUnidadeBancos] = useState("Todas");
 
   const [
     configuracoes,
@@ -993,91 +1018,108 @@ function App() {
      BANCOS
   ======================================================= */
 
-  const resumoBancos =
-    useMemo<
-      ResumoBanco[]
-    >(() => {
-      const mapa =
-        new Map<
-          string,
-          ResumoBanco
-        >();
-
-      lancamentos.forEach(
-        (lancamento) => {
-          const nome =
-            lancamento
-              .formaPagamento
-              .trim() ||
-            "Não informado";
-
-          const chave =
-            nome.toUpperCase();
-
-          const atual =
-            mapa.get(chave) ??
-            {
-              nome,
-
-              entradas: 0,
-
-              saidas: 0,
-
-              saldo: 0,
-
-              quantidade: 0,
-            };
-
-          atual.entradas +=
-            lancamento.entrada;
-
-          atual.saidas +=
-            lancamento.saida;
-
-          atual.quantidade += 1;
-
-          atual.saldo =
-            atual.entradas -
-            atual.saidas;
-
-          mapa.set(
-            chave,
-            atual
-          );
-        }
+  const competenciasBancos =
+    useMemo(() => {
+      const lista = Array.from(
+        new Set(lancamentos.map((item) => item.competencia.trim()).filter(Boolean))
       );
-
-      return Array.from(
-        mapa.values()
-      ).sort(
-        (a, b) =>
-          b.entradas +
-          b.saidas -
-          (a.entradas +
-            a.saidas)
-      );
+      return lista.sort((a, b) => {
+        const [mesA, anoA] = a.split("/");
+        const [mesB, anoB] = b.split("/");
+        return Number(anoB) * 100 + Number(mesB) - (Number(anoA) * 100 + Number(mesA));
+      });
     }, [lancamentos]);
+
+  const unidadesDisponiveisBancos =
+    useMemo(
+      () =>
+        Array.from(
+          new Set([
+            ...configuracoes.unidades,
+            ...lancamentos.map((item) => item.unidade.trim()),
+          ].filter(Boolean))
+        ).sort((a, b) => a.localeCompare(b, "pt-BR")),
+      [configuracoes.unidades, lancamentos]
+    );
+
+  const lancamentosBancos =
+    useMemo(
+      () =>
+        lancamentos.filter((item) => {
+          const correspondeCompetencia =
+            competenciaBancos === "Todas" ||
+            item.competencia === competenciaBancos;
+          const correspondeUnidade =
+            unidadeBancos === "Todas" ||
+            item.unidade.trim().toLocaleUpperCase("pt-BR") ===
+              unidadeBancos.toLocaleUpperCase("pt-BR");
+          const correspondeInicio =
+            !dataInicialBancos ||
+            Boolean(item.data && item.data >= dataInicialBancos);
+          const correspondeFim =
+            !dataFinalBancos ||
+            Boolean(item.data && item.data <= dataFinalBancos);
+          return (
+            correspondeCompetencia &&
+            correspondeUnidade &&
+            correspondeInicio &&
+            correspondeFim
+          );
+        }),
+      [
+        lancamentos,
+        competenciaBancos,
+        unidadeBancos,
+        dataInicialBancos,
+        dataFinalBancos,
+      ]
+    );
+
+  const resumoBancos =
+    useMemo<ResumoBanco[]>(() => {
+      const mapa = new Map<string, ResumoBanco>();
+
+      lancamentosBancos.forEach((lancamento) => {
+        const grupo = agruparBancoOuCartao(lancamento.formaPagamento);
+        const atual = mapa.get(grupo.chave) ?? {
+          chave: grupo.chave,
+          nome: grupo.nome,
+          entradas: 0,
+          saidas: 0,
+          saldo: 0,
+          quantidade: 0,
+        };
+
+        atual.entradas += lancamento.entrada;
+        atual.saidas += lancamento.saida;
+        atual.quantidade += 1;
+        atual.saldo = atual.entradas - atual.saidas;
+        mapa.set(grupo.chave, atual);
+      });
+
+      return Array.from(mapa.values()).sort(
+        (a, b) => b.entradas + b.saidas - (a.entradas + a.saidas)
+      );
+    }, [lancamentosBancos]);
 
   const movimentacoesBanco =
     useMemo(() => {
-      if (
-        !bancoSelecionado
-      ) {
-        return [];
-      }
-
-      return lancamentos.filter(
-        (item) =>
-          (
-            item.formaPagamento.trim() ||
-            "Não informado"
-          ).toUpperCase() ===
-          bancoSelecionado.toUpperCase()
+      if (!bancoSelecionado) return [];
+      return lancamentosBancos.filter(
+        (item) => agruparBancoOuCartao(item.formaPagamento).chave === bancoSelecionado
       );
-    }, [
-      lancamentos,
-      bancoSelecionado,
-    ]);
+    }, [lancamentosBancos, bancoSelecionado]);
+
+  const nomeBancoSelecionado =
+    resumoBancos.find((item) => item.chave === bancoSelecionado)?.nome ?? "";
+
+  const limparFiltrosBancos = () => {
+    setCompetenciaBancos("Todas");
+    setDataInicialBancos("");
+    setDataFinalBancos("");
+    setUnidadeBancos("Todas");
+    setBancoSelecionado(null);
+  };
 
   /* =======================================================
      IMPORTAÇÃO EXCEL
@@ -3212,6 +3254,76 @@ function App() {
               subtitulo="Resumo financeiro por banco e forma de pagamento"
             />
 
+            <section style={{ ...estilos.caixa, marginBottom: 25 }}>
+              <h2 style={{ marginTop: 0 }}>Filtros de bancos e cartões</h2>
+              <div style={estilos.filtrosBancos}>
+                <label style={estilos.campoGrupo}>
+                  <strong>Competência</strong>
+                  <select
+                    value={competenciaBancos}
+                    onChange={(evento) => {
+                      setCompetenciaBancos(evento.target.value);
+                      setBancoSelecionado(null);
+                    }}
+                    style={estilos.input}
+                  >
+                    <option value="Todas">Todas</option>
+                    {competenciasBancos.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+                <label style={estilos.campoGrupo}>
+                  <strong>Data inicial</strong>
+                  <input
+                    type="date"
+                    value={dataInicialBancos}
+                    onChange={(evento) => {
+                      setDataInicialBancos(evento.target.value);
+                      setBancoSelecionado(null);
+                    }}
+                    style={estilos.input}
+                  />
+                </label>
+                <label style={estilos.campoGrupo}>
+                  <strong>Data final</strong>
+                  <input
+                    type="date"
+                    value={dataFinalBancos}
+                    onChange={(evento) => {
+                      setDataFinalBancos(evento.target.value);
+                      setBancoSelecionado(null);
+                    }}
+                    style={estilos.input}
+                  />
+                </label>
+                <label style={estilos.campoGrupo}>
+                  <strong>Unidade</strong>
+                  <select
+                    value={unidadeBancos}
+                    onChange={(evento) => {
+                      setUnidadeBancos(evento.target.value);
+                      setBancoSelecionado(null);
+                    }}
+                    style={estilos.input}
+                  >
+                    <option value="Todas">Todas</option>
+                    {unidadesDisponiveisBancos.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div style={{ ...estilos.botoes, marginTop: 18 }}>
+                <button onClick={limparFiltrosBancos} style={estilos.botaoSecundario}>
+                  Limpar filtros
+                </button>
+                <span style={estilos.textoCinza}>
+                  {lancamentosBancos.length} movimentação(ões) encontrada(s)
+                </span>
+              </div>
+            </section>
+
             {resumoBancos.length ===
             0 ? (
               <section
@@ -3242,7 +3354,7 @@ function App() {
                     (banco) => (
                       <div
                         key={
-                          banco.nome
+                          banco.chave
                         }
 
                         style={
@@ -3254,7 +3366,7 @@ function App() {
                             estilos.iconeBanco
                           }
                         >
-                          🏦
+                          {banco.chave === "CARTOES" ? "💳" : "🏦"}
                         </div>
 
                         <h2>
@@ -3309,7 +3421,7 @@ function App() {
                         <button
                           onClick={() =>
                             setBancoSelecionado(
-                              banco.nome
+                              banco.chave
                             )
                           }
 
@@ -3338,7 +3450,7 @@ function App() {
                   >
                     <h2>
                       {bancoSelecionado
-                        ? `Movimentações — ${bancoSelecionado}`
+                        ? `Movimentações — ${nomeBancoSelecionado}`
                         : "Movimentações por banco"}
                     </h2>
 
@@ -5640,6 +5752,13 @@ const estilos: Record<
     gap: 12,
 
     marginBottom: 20,
+  },
+
+  filtrosBancos: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
+    gap: 16,
+    marginTop: 18,
   },
 
   cardsBancos: {
