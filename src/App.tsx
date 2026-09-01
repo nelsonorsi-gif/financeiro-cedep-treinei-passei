@@ -2684,6 +2684,7 @@ function App() {
                         saldoRealDashboard
                       )
                 }
+                corValor={saldoRealDashboard >= 0 ? "#2563eb" : "#dc2626"}
               />
 
               <Card
@@ -2695,6 +2696,7 @@ function App() {
                         entradasDashboard
                       )
                 }
+                corValor="#2563eb"
               />
 
               <Card
@@ -2706,6 +2708,7 @@ function App() {
                         saidasDashboard
                       )
                 }
+                corValor="#dc2626"
               />
 
               <Card
@@ -4536,10 +4539,14 @@ function Card({
   titulo,
 
   valor,
+
+  corValor,
 }: {
   titulo: string;
 
   valor: string;
+
+  corValor?: string;
 }) {
   return (
     <div
@@ -4558,6 +4565,7 @@ function Card({
       <strong
         style={{
           fontSize: 28,
+          color: corValor,
         }}
       >
         {valor}
