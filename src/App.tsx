@@ -141,6 +141,8 @@ type ResumoBanco = {
 
   saidas: number;
 
+  saidasPessoais: number;
+
   saldo: number;
 
   quantidade: number;
@@ -1021,14 +1023,17 @@ function App() {
   const competenciasBancos =
     useMemo(() => {
       const lista = Array.from(
-        new Set(lancamentos.map((item) => item.competencia.trim()).filter(Boolean))
+        new Set([
+          ...lancamentos.map((item) => item.competencia.trim()),
+          ...despesasPessoais.map((item) => item.competencia.trim()),
+        ].filter(Boolean))
       );
       return lista.sort((a, b) => {
         const [mesA, anoA] = a.split("/");
         const [mesB, anoB] = b.split("/");
         return Number(anoB) * 100 + Number(mesB) - (Number(anoA) * 100 + Number(mesA));
       });
-    }, [lancamentos]);
+    }, [lancamentos, despesasPessoais]);
 
   const unidadesDisponiveisBancos =
     useMemo(
@@ -1075,6 +1080,27 @@ function App() {
       ]
     );
 
+  const despesasPessoaisBancos =
+    useMemo(
+      () =>
+        despesasPessoais.filter((item) => {
+          const correspondeCompetencia =
+            competenciaBancos === "Todas" || item.competencia === competenciaBancos;
+          const correspondeInicio =
+            !dataInicialBancos || Boolean(item.vencimento && item.vencimento >= dataInicialBancos);
+          const correspondeFim =
+            !dataFinalBancos || Boolean(item.vencimento && item.vencimento <= dataFinalBancos);
+          return (
+            item.status !== "Dispensado" &&
+            Number(item.valorPago) > 0 &&
+            Boolean(item.formaPagamento?.trim()) &&
+            correspondeCompetencia &&
+            correspondeInicio &&
+            correspondeFim
+          );
+        }),
+      [despesasPessoais, competenciaBancos, dataInicialBancos, dataFinalBancos]
+    );
   const resumoBancos =
     useMemo<ResumoBanco[]>(() => {
       const mapa = new Map<string, ResumoBanco>();
@@ -1086,6 +1112,7 @@ function App() {
           nome: grupo.nome,
           entradas: 0,
           saidas: 0,
+          saidasPessoais: 0,
           saldo: 0,
           quantidade: 0,
         };
@@ -1093,14 +1120,33 @@ function App() {
         atual.entradas += lancamento.entrada;
         atual.saidas += lancamento.saida;
         atual.quantidade += 1;
-        atual.saldo = atual.entradas - atual.saidas;
+        atual.saldo = atual.entradas - atual.saidas - atual.saidasPessoais;
         mapa.set(grupo.chave, atual);
       });
 
+
+      despesasPessoaisBancos.forEach((despesa) => {
+        const grupo = agruparBancoOuCartao(despesa.formaPagamento || "");
+        const atual = mapa.get(grupo.chave) ?? {
+          chave: grupo.chave,
+          nome: grupo.nome,
+          entradas: 0,
+          saidas: 0,
+          saidasPessoais: 0,
+          saldo: 0,
+          quantidade: 0,
+        };
+        atual.saidasPessoais += Number(despesa.valorPago);
+        atual.quantidade += 1;
+        atual.saldo = atual.entradas - atual.saidas - atual.saidasPessoais;
+        mapa.set(grupo.chave, atual);
+      });
       return Array.from(mapa.values()).sort(
-        (a, b) => b.entradas + b.saidas - (a.entradas + a.saidas)
+        (a, b) =>
+          b.entradas + b.saidas + b.saidasPessoais -
+          (a.entradas + a.saidas + a.saidasPessoais)
       );
-    }, [lancamentosBancos]);
+    }, [lancamentosBancos, despesasPessoaisBancos]);
 
   const movimentacoesBanco =
     useMemo(() => {
@@ -3403,6 +3449,11 @@ function App() {
                           valor={moeda(
                             banco.saidas
                           )}
+                        />
+
+                        <ResumoBancoLinha
+                          nome="Saídas pessoais"
+                          valor={moeda(banco.saidasPessoais)}
                         />
 
                         <div

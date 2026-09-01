@@ -52,7 +52,7 @@ type Ocorrencia = {
 
 const CHAVE_PESSOAIS = "financeiro-cedep-despesas-pessoais";
 const categoriasPessoaisPadrao = ["Alimentação","Casa","Educação","Lazer","Saúde","Transporte","Vestuário","Outros"];
-const pagamentosPessoaisPadrao = ["Dinheiro","Sicoob","Cartão de crédito","Cartão de débito"];
+const pagamentosPessoaisPadrao = ["Dinheiro","Cartão de crédito à vista","Cartão de débito","Cartão parcelado"];
 const lerListaLocal = <T,>(chave: string, padrao: T[]): T[] => {
   try { const valor=JSON.parse(localStorage.getItem(chave)||"null"); return Array.isArray(valor)?valor:padrao; } catch { return padrao; }
 };
@@ -491,7 +491,7 @@ export default function CompromissosMensais({
           <Campo label="Valor padrão" value={valor} onChange={setValor} placeholder="Ex.: 1.500,00" />
           <Campo label="Dia do vencimento" type="number" value={dia} onChange={setDia} />
           {escopo === "Pessoal" ? (
-            <CampoComLista label="Forma de pagamento" value={banco} onChange={setBanco} opcoes={pagamentosPessoais} listaId="pagamentos-pessoais-compromissos" placeholder="Digite ou selecione" />
+            <CampoComLista label="Forma de pagamento" value={banco} onChange={setBanco} opcoes={Array.from(new Set([...pagamentosPessoaisPadrao, ...configuracoes.bancos, ...pagamentosPessoais]))} listaId="pagamentos-pessoais-compromissos" placeholder="Digite ou selecione" />
           ) : (
             <>
               <Campo label="Banco / conta" value={banco} onChange={setBanco} />

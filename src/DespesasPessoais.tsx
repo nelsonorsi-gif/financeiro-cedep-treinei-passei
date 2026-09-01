@@ -1,4 +1,5 @@
 import { useMemo, useState, type CSSProperties } from "react";
+import { carregarConfiguracoes } from "./Configuracoes";
 
 export const CHAVE_DESPESAS_PESSOAIS = "financeiro-cedep-despesas-pessoais";
 export const CHAVE_CATEGORIAS_PESSOAIS = "financeiro-cedep-categorias-pessoais";
@@ -29,7 +30,12 @@ const categoriasPadrao = [
   "Outros",
 ];
 
-const pagamentosPadrao = ["Dinheiro", "Sicoob", "Cartão de crédito", "Cartão de débito"];
+const pagamentosPadrao = [
+  "Dinheiro",
+  "Cartão de crédito à vista",
+  "Cartão de débito",
+  "Cartão parcelado",
+];
 
 const hoje = () => new Date().toISOString().slice(0, 10);
 const mesAtual = () => hoje().slice(0, 7);
@@ -60,7 +66,18 @@ const formatarData = (data: string) => data.split("-").reverse().join("/");
 export default function DespesasPessoais() {
   const [despesas, setDespesas] = useState<DespesaPessoal[]>(lerDespesas);
   const [categorias, setCategorias] = useState<string[]>(() => lerLista(CHAVE_CATEGORIAS_PESSOAIS, categoriasPadrao));
-  const [pagamentos, setPagamentos] = useState<string[]>(() => lerLista(CHAVE_PAGAMENTOS_PESSOAIS, pagamentosPadrao).filter((opcao) => !["pix", "transferência", "transferencia"].includes(opcao.trim().toLowerCase())));
+  const configuracoes = useMemo(carregarConfiguracoes, []);
+  const [pagamentos, setPagamentos] = useState<string[]>(() =>
+    Array.from(new Set([
+      ...pagamentosPadrao,
+      ...carregarConfiguracoes().bancos,
+      ...lerLista<string>(CHAVE_PAGAMENTOS_PESSOAIS, []),
+    ])).filter((opcao) => !["pix", "transferência", "transferencia"].includes(opcao.trim().toLowerCase()))
+  );
+  const formasPagamento = useMemo(
+    () => Array.from(new Set([...pagamentosPadrao, ...configuracoes.bancos, ...pagamentos])),
+    [configuracoes.bancos, pagamentos]
+  );
   const [mes, setMes] = useState(mesAtual());
   const [busca, setBusca] = useState("");
   const [editandoId, setEditandoId] = useState<string | null>(null);
@@ -182,7 +199,7 @@ export default function DespesasPessoais() {
           <Campo label="Histórico" value={descricao} onChange={setDescricao} placeholder="Ex.: Mercado" />
           <CampoComLista label="Categoria" value={categoria} onChange={setCategoria} opcoes={categorias} listaId="categorias-pessoais" placeholder="Digite ou selecione" />
           <Campo label="Valor" value={valor} onChange={setValor} placeholder="Ex.: 150,00" />
-          <CampoComLista label="Forma de pagamento" value={formaPagamento} onChange={setFormaPagamento} opcoes={pagamentos} listaId="pagamentos-pessoais" placeholder="Digite ou selecione" />
+          <CampoComLista label="Forma de pagamento" value={formaPagamento} onChange={setFormaPagamento} opcoes={formasPagamento} listaId="pagamentos-pessoais" placeholder="Digite ou selecione" />
           <label style={estilos.campo}>
             <strong>Situação</strong>
             <select value={status} onChange={(evento) => setStatus(evento.target.value as "Pago" | "Pendente")} style={estilos.input}>
