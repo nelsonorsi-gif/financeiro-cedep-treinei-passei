@@ -906,7 +906,7 @@ function Secretaria({
                   value={
                     formaPagamento
                   }
-                  opcoes={Array.from(new Set(["Dinheiro", "PIX", "Cartão de crédito à vista", "Cartão de débito", "Cartão parcelado", "Transferência", ...configuracoes.bancos]))}
+                  opcoes={Array.from(new Set(["Dinheiro", "Cartão de crédito à vista", "Cartão de débito", "Cartão parcelado", ...configuracoes.bancos]))}
                   onChange={
                     setFormaPagamento
                   }

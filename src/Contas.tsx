@@ -205,7 +205,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
   const [
     formaPagamento,
     setFormaPagamento,
-  ] = useState("PIX");
+  ] = useState("Dinheiro");
   const [parcelasCartao, setParcelasCartao] = useState(2);
   const [
     bancoPagamento,
@@ -424,7 +424,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
       ).replace(".", ",")
     );
     setDataPagamento(hojeISO());
-    const formaConta = conta.formaPagamentoBaixa || conta.banco || "PIX";
+    const formaConta = conta.formaPagamentoBaixa || conta.banco || "Dinheiro";
     setBancoPagamento(formaConta);
     setFormaPagamento(formaConta);
     setParcelasCartao(Math.max(2, conta.parcelasCartao ?? 2));
@@ -826,7 +826,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
           <CampoSelect
             label="Forma de pagamento / Conta"
             value={formaPagamentoConta}
-            opcoes={Array.from(new Set(["Dinheiro", "PIX", "Cartão de crédito à vista", "Cartão de débito", "Cartão parcelado", "Transferência", ...configuracoes.bancos]))}
+            opcoes={Array.from(new Set(["Dinheiro", "Cartão de crédito à vista", "Cartão de débito", "Cartão parcelado", ...configuracoes.bancos]))}
             onChange={(opcao) => {
               setFormaPagamentoConta(opcao);
               setBanco(opcao);
@@ -1076,11 +1076,9 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
                 value={formaPagamento}
                 opcoes={Array.from(new Set([
                   "Dinheiro",
-                  "PIX",
                   "Cartão de crédito à vista",
                   "Cartão de débito",
                   "Cartão parcelado",
-                  "Transferência",
                   ...configuracoes.bancos,
                 ]))}
                 onChange={(opcao) => {

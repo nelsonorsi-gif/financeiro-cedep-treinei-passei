@@ -4142,11 +4142,9 @@ function FormularioLancamento({
           value={formulario.formaPagamento}
           opcoes={Array.from(new Set([
             "Dinheiro",
-            "PIX",
             "Cartão de crédito à vista",
             "Cartão de débito",
             "Cartão parcelado",
-            "Transferência",
             ...configuracoes.bancos,
           ]))}
           onChange={(valor) =>

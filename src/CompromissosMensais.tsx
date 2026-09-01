@@ -52,7 +52,7 @@ type Ocorrencia = {
 
 const CHAVE_PESSOAIS = "financeiro-cedep-despesas-pessoais";
 const categoriasPessoaisPadrao = ["Alimentação","Casa","Educação","Lazer","Saúde","Transporte","Vestuário","Outros"];
-const pagamentosPessoaisPadrao = ["Dinheiro","PIX","Sicoob","Cartão de crédito","Cartão de débito"];
+const pagamentosPessoaisPadrao = ["Dinheiro","Sicoob","Cartão de crédito","Cartão de débito"];
 const lerListaLocal = <T,>(chave: string, padrao: T[]): T[] => {
   try { const valor=JSON.parse(localStorage.getItem(chave)||"null"); return Array.isArray(valor)?valor:padrao; } catch { return padrao; }
 };
@@ -119,7 +119,7 @@ export default function CompromissosMensais({
   const [filtroBeneficiario, setFiltroBeneficiario] = useState("Todos");
   const [funcionarios, setFuncionarios] = useState<Parceiro[]>(lerFuncionarios);
   const [categoriasPessoais, setCategoriasPessoais] = useState<string[]>(() => lerListaLocal(CHAVE_CATEGORIAS_PESSOAIS, categoriasPessoaisPadrao));
-  const [pagamentosPessoais, setPagamentosPessoais] = useState<string[]>(() => lerListaLocal(CHAVE_PAGAMENTOS_PESSOAIS, pagamentosPessoaisPadrao));
+  const [pagamentosPessoais, setPagamentosPessoais] = useState<string[]>(() => lerListaLocal(CHAVE_PAGAMENTOS_PESSOAIS, pagamentosPessoaisPadrao).filter((opcao) => !["pix", "transferência", "transferencia"].includes(opcao.trim().toLowerCase())));
   const configuracoes =
     useMemo(
       carregarConfiguracoes,
@@ -161,7 +161,7 @@ export default function CompromissosMensais({
     const atualizarListas = () => {
       setFuncionarios(lerFuncionarios());
       setCategoriasPessoais(lerListaLocal(CHAVE_CATEGORIAS_PESSOAIS, categoriasPessoaisPadrao));
-      setPagamentosPessoais(lerListaLocal(CHAVE_PAGAMENTOS_PESSOAIS, pagamentosPessoaisPadrao));
+      setPagamentosPessoais(lerListaLocal(CHAVE_PAGAMENTOS_PESSOAIS, pagamentosPessoaisPadrao).filter((opcao) => !["pix", "transferência", "transferencia"].includes(opcao.trim().toLowerCase())));
     };
     window.addEventListener("storage", atualizarListas);
     window.addEventListener("financeiro-despesas-pessoais-atualizadas", atualizarListas);

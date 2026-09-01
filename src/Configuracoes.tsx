@@ -15,12 +15,21 @@ export type ConfiguracoesFinanceiras = {
 export const CHAVE_CONFIGURACOES =
   "financeiro-cedep-configuracoes";
 
+const OPCOES_BANCARIAS_DESATIVADAS = ["pix", "transferencia"];
+
+const normalizarOpcaoBancaria = (valor: string) =>
+  valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+const filtrarOpcoesBancariasAtivas = (opcoes: string[]) =>
+  opcoes.filter((opcao) =>
+    !OPCOES_BANCARIAS_DESATIVADAS.includes(normalizarOpcaoBancaria(opcao))
+  );
+
 export const CONFIGURACOES_PADRAO: ConfiguracoesFinanceiras =
   {
     bancos: [
       "SICOOB",
       "INTER",
-      "PIX",
       "DINHEIRO",
     ],
 
@@ -69,7 +78,7 @@ export function carregarConfiguracoes(): ConfiguracoesFinanceiras {
           Array.isArray(
             dados.bancos
           )
-            ? dados.bancos
+            ? filtrarOpcoesBancariasAtivas(dados.bancos)
             : CONFIGURACOES_PADRAO.bancos,
 
         tiposEntrada:

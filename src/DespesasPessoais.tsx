@@ -29,7 +29,7 @@ const categoriasPadrao = [
   "Outros",
 ];
 
-const pagamentosPadrao = ["Dinheiro", "PIX", "Sicoob", "Cartão de crédito", "Cartão de débito"];
+const pagamentosPadrao = ["Dinheiro", "Sicoob", "Cartão de crédito", "Cartão de débito"];
 
 const hoje = () => new Date().toISOString().slice(0, 10);
 const mesAtual = () => hoje().slice(0, 7);
@@ -60,7 +60,7 @@ const formatarData = (data: string) => data.split("-").reverse().join("/");
 export default function DespesasPessoais() {
   const [despesas, setDespesas] = useState<DespesaPessoal[]>(lerDespesas);
   const [categorias, setCategorias] = useState<string[]>(() => lerLista(CHAVE_CATEGORIAS_PESSOAIS, categoriasPadrao));
-  const [pagamentos, setPagamentos] = useState<string[]>(() => lerLista(CHAVE_PAGAMENTOS_PESSOAIS, pagamentosPadrao));
+  const [pagamentos, setPagamentos] = useState<string[]>(() => lerLista(CHAVE_PAGAMENTOS_PESSOAIS, pagamentosPadrao).filter((opcao) => !["pix", "transferência", "transferencia"].includes(opcao.trim().toLowerCase())));
   const [mes, setMes] = useState(mesAtual());
   const [busca, setBusca] = useState("");
   const [editandoId, setEditandoId] = useState<string | null>(null);
