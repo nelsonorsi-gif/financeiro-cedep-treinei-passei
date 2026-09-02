@@ -124,6 +124,14 @@ export default function Presenca({
     );
   };
 
+  const editarRegistro = (registro: RegistroPresenca) => {
+    setTurmaId(registro.turmaId);
+    setData(registro.data);
+    setFaltas([...registro.faltas]);
+    setRegistroAbertoId(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const salvar = () => {
     if (!turmaId || !data) {
       alert("Selecione a turma e a data.");
@@ -361,9 +369,14 @@ export default function Presenca({
                     {registro.data.split("-").reverse().join("/")} • {turmaHistorico?.turno || "Período não informado"}
                   </span>
                   <span>{registro.faltas.length} falta(s)</span>
-                  <button type="button" onClick={() => setRegistroAbertoId(estaAberto ? null : registro.id)} style={estilos.botaoVisualizar}>
-                    {estaAberto ? "Ocultar alunos" : "Visualizar faltantes"}
-                  </button>
+                  <div style={estilos.acoesHistorico}>
+                    <button type="button" onClick={() => editarRegistro(registro)} style={estilos.botaoEditar}>
+                      Editar registro
+                    </button>
+                    <button type="button" onClick={() => setRegistroAbertoId(estaAberto ? null : registro.id)} style={estilos.botaoVisualizar}>
+                      {estaAberto ? "Ocultar alunos" : "Visualizar faltantes"}
+                    </button>
+                  </div>
                 </div>
                 {estaAberto && (
                   <div style={estilos.faltantes}>
@@ -462,6 +475,11 @@ const estilos: Record<string, CSSProperties> = {
     borderBottom: "1px solid #e2e8f0",
   },
   historicoBloco: { borderBottom: "1px solid #e2e8f0" },
+  acoesHistorico: { display: "flex", gap: 8, flexWrap: "wrap" },
+  botaoEditar: {
+    background: "#15803d", color: "white", border: "none", borderRadius: 8,
+    padding: "9px 12px", cursor: "pointer", fontWeight: 700,
+  },
   botaoVisualizar: {
     background: "#17233a", color: "white", border: "none", borderRadius: 8,
     padding: "9px 12px", cursor: "pointer", fontWeight: 700,
