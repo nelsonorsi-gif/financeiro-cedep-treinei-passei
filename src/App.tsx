@@ -2832,6 +2832,14 @@ function App() {
                 />
 
                 <Resumo
+                  nome="Despesas pessoais"
+                  valor={
+                    valoresDashboardOcultos
+                      ? "••••••"
+                      : moeda(despesasPessoaisDashboard)
+                  }
+                />
+                <Resumo
                   nome="Resultado"
                   valor={
                     valoresDashboardOcultos

@@ -111,6 +111,9 @@ export default function CompromissosMensais({
   const [valor, setValor] = useState("");
   const [dia, setDia] = useState("10");
   const [banco, setBanco] = useState("");
+  const [pagamentoEmAndamento, setPagamentoEmAndamento] = useState<Ocorrencia | null>(null);
+  const [valorPagamento, setValorPagamento] = useState("");
+  const [formaPagamentoBaixa, setFormaPagamentoBaixa] = useState("");
   const [unidade, setUnidade] = useState("CEDEP");
   const [compromissoEditando, setCompromissoEditando] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
@@ -337,15 +340,31 @@ export default function CompromissosMensais({
     else await carregar();
   };
 
-  const pagar = async (item: Ocorrencia) => {
-    if (!supabase || item.status === "Pago") return;
-    const informado = window.prompt("Valor pago:", String(item.valor_previsto - item.valor_pago).replace(".", ","));
-    if (informado === null) return;
-    const pagamento = Number(informado.replace(".", "").replace(",", "."));
+  const abrirPagamento = (item: Ocorrencia) => {
+    setPagamentoEmAndamento(item);
+    setValorPagamento(String(item.valor_previsto - item.valor_pago).replace(".", ","));
+    setFormaPagamentoBaixa(item.banco || "");
+  };
+
+  const fecharPagamento = () => {
+    setPagamentoEmAndamento(null);
+    setValorPagamento("");
+    setFormaPagamentoBaixa("");
+  };
+
+  const pagar = async () => {
+    const item = pagamentoEmAndamento;
+    if (!supabase || !item || item.status === "Pago") return;
+    const pagamento = Number(valorPagamento.replace(".", "").replace(",", "."));
     if (!Number.isFinite(pagamento) || pagamento <= 0) {
       alert("Valor inválido.");
       return;
     }
+    if (!formaPagamentoBaixa.trim()) {
+      alert("Informe a forma de pagamento ou conta utilizada.");
+      return;
+    }
+    const formaSelecionada = formaPagamentoBaixa.trim();
     const totalPago = Math.min(item.valor_previsto, item.valor_pago + pagamento);
     const concluido = totalPago >= item.valor_previsto;
     const dataPagamento = new Date().toISOString().slice(0, 10);
@@ -355,6 +374,7 @@ export default function CompromissosMensais({
         valor_pago: totalPago,
         status: concluido ? "Pago" : "Parcial",
         data_pagamento: dataPagamento,
+        banco: formaSelecionada,
         atualizado_em: new Date().toISOString(),
       })
       .eq("id", item.id);
@@ -370,6 +390,7 @@ export default function CompromissosMensais({
           valor_pago: totalPago,
           status: concluido ? "Pago" : "Parcial",
           data_baixa: concluido ? dataPagamento : null,
+          banco: formaSelecionada,
           atualizado_por: usuarioAtual.id,
         })
         .eq("id", `recorrente-${item.id}`);
@@ -379,13 +400,13 @@ export default function CompromissosMensais({
         valor: pagamento,
         data: dataPagamento,
         categoria: item.categoria || "Compromisso mensal",
-        banco: item.banco,
+        banco: formaSelecionada,
         unidade: item.unidade,
       });
     }
+    fecharPagamento();
     await carregar();
   };
-
   const dispensar = async (item: Ocorrencia) => {
     if (!supabase || !window.confirm(`Dispensar "${item.descricao}" neste mês?`)) return;
     const { error } = await supabase
@@ -434,6 +455,13 @@ export default function CompromissosMensais({
     .filter((item) => item.status !== "Dispensado")
     .reduce((total, item) => total + Math.max(0, Number(item.valor_previsto) - Number(item.valor_pago)), 0);
 
+  const formasPagamentoDisponiveis = Array.from(
+    new Set([
+      ...pagamentosPessoaisPadrao,
+      ...configuracoes.bancos,
+      ...pagamentosPessoais,
+    ])
+  );
   return (
     <div>
       <header style={estilos.cabecalho}>
@@ -590,7 +618,7 @@ export default function CompromissosMensais({
                   <td style={estilos.td}>
                     <div style={estilos.acoesLinha}>
                       {item.status !== "Pago" && item.status !== "Dispensado" && (
-                        <button style={estilos.botaoPagar} onClick={() => pagar(item)}>✓ Pagar</button>
+                        <button style={estilos.botaoPagar} onClick={() => abrirPagamento(item)}>✓ Pagar</button>
                       )}
                       {item.status !== "Pago" && item.status !== "Dispensado" && (
                         <button style={estilos.botaoSecundario} onClick={() => dispensar(item)}>Dispensar</button>
@@ -603,6 +631,35 @@ export default function CompromissosMensais({
           </table>
         </div>
       </section>
+      {pagamentoEmAndamento && (
+        <div style={estilos.modalFundo} role="dialog" aria-modal="true" aria-label="Efetuar pagamento">
+          <section style={estilos.modal}>
+            <h2 style={{ marginTop: 0 }}>Efetuar pagamento</h2>
+            <p style={estilos.textoCinza}>
+              {pagamentoEmAndamento.descricao} • {moeda(Number(pagamentoEmAndamento.valor_previsto))}
+            </p>
+            <div style={estilos.formGridPagamento}>
+              <Campo label="Valor pago" value={valorPagamento} onChange={setValorPagamento} placeholder="Ex.: 500,00" />
+              <CampoComLista
+                label="Forma de pagamento / Conta"
+                value={formaPagamentoBaixa}
+                onChange={setFormaPagamentoBaixa}
+                opcoes={formasPagamentoDisponiveis}
+                listaId="formas-pagamento-baixa-compromisso"
+                placeholder="Digite ou selecione"
+              />
+            </div>
+            <div style={estilos.acoes}>
+              <button type="button" style={estilos.botaoPagar} onClick={() => void pagar()}>
+                Confirmar pagamento
+              </button>
+              <button type="button" style={estilos.botaoSecundario} onClick={fecharPagamento}>
+                Cancelar
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -620,6 +677,17 @@ function Card({ titulo, valor }: { titulo: string; valor: string }) {
 }
 
 const estilos: Record<string, CSSProperties> = {
+  modalFundo: {
+    position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.58)",
+    display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 1000,
+  },
+  modal: {
+    width: "min(620px, 100%)", background: "white", borderRadius: 16,
+    padding: 24, boxShadow: "0 24px 70px rgba(0,0,0,.28)",
+  },
+  formGridPagamento: {
+    display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14,
+  },
   cabecalho: { display: "flex", justifyContent: "space-between", alignItems: "end", gap: 20, flexWrap: "wrap", marginBottom: 24 },
   textoCinza: { color: "#526078", lineHeight: 1.55 },
   cards: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 16, marginBottom: 24 },
