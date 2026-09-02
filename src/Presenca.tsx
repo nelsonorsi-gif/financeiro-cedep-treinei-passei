@@ -68,6 +68,10 @@ export default function Presenca({
   const [turmaId, setTurmaId] = useState("");
   const [data, setData] = useState(hoje);
   const [faltas, setFaltas] = useState<string[]>([]);
+  const [filtroData, setFiltroData] = useState("");
+  const [filtroTurno, setFiltroTurno] = useState("");
+  const [filtroTurma, setFiltroTurma] = useState("");
+  const [registroAbertoId, setRegistroAbertoId] = useState<string | null>(null);
 
   useEffect(() => {
     const atualizar = () => setDados(carregarDados());
@@ -207,10 +211,19 @@ export default function Presenca({
     janela.document.close();
   };
 
+  const turnosDisponiveis = Array.from(
+    new Set(dados.turmas.map((item) => item.turno).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+
   const historico = (dados.presencas ?? [])
-    .filter((item) => !turmaId || item.turmaId === turmaId)
+    .filter((item) => !filtroData || item.data === filtroData)
+    .filter((item) => !filtroTurma || item.turmaId === filtroTurma)
+    .filter((item) => {
+      if (!filtroTurno) return true;
+      return dados.turmas.find((turmaItem) => turmaItem.id === item.turmaId)?.turno === filtroTurno;
+    })
     .sort((a, b) => b.data.localeCompare(a.data))
-    .slice(0, 12);
+    .slice(0, 50);
 
   return (
     <div>
@@ -305,6 +318,29 @@ export default function Presenca({
 
       <section style={{ ...estilos.caixa, marginTop: 22 }}>
         <h2>Últimos registros</h2>
+        <div style={estilos.filtrosHistorico}>
+          <label style={estilos.campo}>
+            <strong>Dia</strong>
+            <input type="date" value={filtroData} onChange={(evento) => setFiltroData(evento.target.value)} style={estilos.input} />
+          </label>
+          <label style={estilos.campo}>
+            <strong>Período</strong>
+            <select value={filtroTurno} onChange={(evento) => setFiltroTurno(evento.target.value)} style={estilos.input}>
+              <option value="">Todos</option>
+              {turnosDisponiveis.map((turno) => <option key={turno} value={turno}>{turno}</option>)}
+            </select>
+          </label>
+          <label style={estilos.campo}>
+            <strong>Turma</strong>
+            <select value={filtroTurma} onChange={(evento) => setFiltroTurma(evento.target.value)} style={estilos.input}>
+              <option value="">Todas</option>
+              {turmasAtivas.map((item) => <option key={item.id} value={item.id}>{item.nome} — {item.curso}</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={() => { setFiltroData(""); setFiltroTurno(""); setFiltroTurma(""); }} style={estilos.botaoLimpar}>
+            Limpar filtros
+          </button>
+        </div>
         {historico.length === 0 ? (
           <p style={estilos.textoCinza}>Nenhuma presença registrada.</p>
         ) : (
@@ -312,14 +348,32 @@ export default function Presenca({
             const turmaHistorico = dados.turmas.find(
               (item) => item.id === registro.turmaId
             );
+            const alunosFaltantes = registro.faltas.map((alunoId) =>
+              dados.matriculas.find((matricula) => matricula.aluno_id === alunoId)?.aluno_nome ?? "Aluno não localizado"
+            );
+            const estaAberto = registroAbertoId === registro.id;
             return (
-              <div key={registro.id} style={estilos.historico}>
-                <span>
-                  <strong>{turmaHistorico?.nome ?? "Turma"}</strong>
-                  <br />
-                  {registro.data.split("-").reverse().join("/")}
-                </span>
-                <span>{registro.faltas.length} falta(s)</span>
+              <div key={registro.id} style={estilos.historicoBloco}>
+                <div style={estilos.historico}>
+                  <span>
+                    <strong>{turmaHistorico?.nome ?? "Turma"}</strong>
+                    <br />
+                    {registro.data.split("-").reverse().join("/")} • {turmaHistorico?.turno || "Período não informado"}
+                  </span>
+                  <span>{registro.faltas.length} falta(s)</span>
+                  <button type="button" onClick={() => setRegistroAbertoId(estaAberto ? null : registro.id)} style={estilos.botaoVisualizar}>
+                    {estaAberto ? "Ocultar alunos" : "Visualizar faltantes"}
+                  </button>
+                </div>
+                {estaAberto && (
+                  <div style={estilos.faltantes}>
+                    {alunosFaltantes.length === 0 ? (
+                      <span style={estilos.textoCinza}>Nenhum aluno faltou neste dia.</span>
+                    ) : (
+                      alunosFaltantes.map((nome, indice) => <span key={`${registro.id}-${indice}`}>• {nome}</span>)
+                    )}
+                  </div>
+                )}
               </div>
             );
           })
@@ -342,6 +396,13 @@ const estilos: Record<string, CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "minmax(240px, 2fr) minmax(180px, 1fr)",
     gap: 16,
+  },
+  filtrosHistorico: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
+    gap: 12,
+    alignItems: "end",
+    marginBottom: 18,
   },
   campo: { display: "flex", flexDirection: "column", gap: 7 },
   input: {
@@ -399,5 +460,17 @@ const estilos: Record<string, CSSProperties> = {
     gap: 12,
     padding: "12px 0",
     borderBottom: "1px solid #e2e8f0",
+  },
+  historicoBloco: { borderBottom: "1px solid #e2e8f0" },
+  botaoVisualizar: {
+    background: "#17233a", color: "white", border: "none", borderRadius: 8,
+    padding: "9px 12px", cursor: "pointer", fontWeight: 700,
+  },
+  botaoLimpar: {
+    background: "#e2e8f0", color: "#17233a", border: "none", borderRadius: 9,
+    padding: "12px 14px", cursor: "pointer", fontWeight: 700,
+  },
+  faltantes: {
+    display: "grid", gap: 6, padding: "2px 12px 14px", color: "#991b1b",
   },
 };
