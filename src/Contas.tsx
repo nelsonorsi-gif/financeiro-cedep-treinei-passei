@@ -62,6 +62,8 @@ type Props = {
   onEstornar?: (conta: Conta, valor: number, motivo: string) => void;
   usuarioAtual: UsuarioSessao;
   onAbrirCaixa?: () => void;
+  contaInicialId?: string | null;
+  onConsumirContaInicial?: () => void;
 };
 
 type SituacaoFiltro =
@@ -163,7 +165,7 @@ const contaVisivelParaUsuario = (conta: Conta, usuario: UsuarioSessao) => {
   );
 };
 
-function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Props) {
+function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaInicialId, onConsumirContaInicial }: Props) {
   const [contas, setContas] = useState<Conta[]>([]);
   const [carregado, setCarregado] = useState(false);
   const [configuracoes, setConfiguracoes] =
@@ -431,6 +433,17 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
     setObservacaoBaixa("");
   };
 
+  useEffect(() => {
+    if (!carregado || !contaInicialId) return;
+    const conta = contas.find((item) => item.id === contaInicialId && item.tipo === tipo);
+    if (!conta) return;
+    setBusca(conta.descricao);
+    setSituacao("Todos");
+    setFiltroUnidade("Todas");
+    if (contaEmAberto(conta)) baixarConta(conta);
+    onConsumirContaInicial?.();
+  }, [carregado, contaInicialId, contas, tipo]);
+
   const confirmarBaixa = async () => {
     if (!contaBaixa) return;
     if (!usuarioPodeMovimentar(usuarioAtual)) {
@@ -581,10 +594,13 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa }: Prop
         new Set(contasPermitidas.map((item) => item.banco).filter(Boolean))
       ).sort(),
       unidades: Array.from(
-        new Set(contasPermitidas.map((item) => item.unidade).filter(Boolean))
+        new Set([
+          ...configuracoes.unidades,
+          ...contasPermitidas.map((item) => item.unidade).filter(Boolean),
+        ])
       ).sort(),
     }),
-    [contasPermitidas]
+    [contasPermitidas, configuracoes.unidades]
   );
 
   const contasFiltradas = useMemo(() => {

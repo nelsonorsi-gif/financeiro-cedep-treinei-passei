@@ -15,6 +15,8 @@ import {
 import type {
   Parceiro,
 } from "./Cadastros";
+import type { UsuarioSessao } from "./Acesso";
+import { salvarContaEstruturada } from "./servicos/contasEstruturadas";
 
 export const CHAVE_ESCOLAS =
   "financeiro-cedep-escolas";
@@ -62,7 +64,8 @@ type DadosEscolas = {
 
 type Props = {
   parceiros: Parceiro[];
-  onAbrirContasReceber?: () => void;
+  usuarioAtual: UsuarioSessao;
+  onAbrirContasReceber?: (contaId: string) => void;
 };
 
 const escolaVazia = (): Omit<
@@ -198,6 +201,7 @@ const lerContas = (): Conta[] => {
 
 function Escolas({
   parceiros,
+  usuarioAtual,
   onAbrirContasReceber,
 }: Props) {
   const [
@@ -472,7 +476,7 @@ function Escolas({
   };
 
   const gerarCobranca =
-    () => {
+    async () => {
       if (
         !escolaAtual ||
         !competencia
@@ -527,8 +531,7 @@ function Escolas({
           escolaAtual.quantidadeMinimaAlunos
         } aluno(s).`;
 
-      const novasContas: Conta[] = [
-        ...contas,
+      const contasCriadas: Conta[] = [
         {
           id: idCobranca,
           descricao:
@@ -550,6 +553,9 @@ function Escolas({
           status: "Pendente",
           tipo: "receber",
           origem: "escola",
+          criadoPorId: usuarioAtual.id,
+          criadoPorNome: usuarioAtual.nome,
+          criadoPorPerfil: usuarioAtual.perfil,
           criadoEm:
             new Date().toISOString(),
         },
@@ -564,7 +570,7 @@ function Escolas({
             idRepasse
         )
       ) {
-        novasContas.push({
+        contasCriadas.push({
           id: idRepasse,
           descricao:
             `Repasse parceiro ${parceiro.nome} - ${escolaAtual.nome} - ${competencia}`,
@@ -587,10 +593,27 @@ function Escolas({
           status: "Pendente",
           tipo: "pagar",
           origem: "repasse-escola",
+          criadoPorId: usuarioAtual.id,
+          criadoPorNome: usuarioAtual.nome,
+          criadoPorPerfil: usuarioAtual.perfil,
           criadoEm:
             new Date().toISOString(),
         });
       }
+
+      try {
+        await Promise.all(
+          contasCriadas.map((conta) =>
+            salvarContaEstruturada(conta, usuarioAtual.id)
+          )
+        );
+      } catch (erro) {
+        console.error("Erro ao salvar cobrança da escola:", erro);
+        alert("Não foi possível salvar a cobrança em Contas a Receber. Tente novamente ou informe o administrador.");
+        return;
+      }
+
+      const novasContas: Conta[] = [...contas, ...contasCriadas];
 
       localStorage.setItem(
         CHAVE_CONTAS,
@@ -676,7 +699,7 @@ function Escolas({
     });
   };
 
-  const gerarCobrancasEmLote = () => {
+  const gerarCobrancasEmLote = async () => {
     if (!competencia) {
       alert("Selecione a competência.");
       return;
@@ -694,6 +717,7 @@ function Escolas({
 
     const contas = lerContas();
     const novasContas = [...contas];
+    const contasCriadas: Conta[] = [];
     const novosLancamentos: LancamentoEscola[] = [];
     const quantidadesAtualizadas = new Map<string, number>();
     let duplicadas = 0;
@@ -711,7 +735,7 @@ function Escolas({
       const descricaoDetalhada = `${quantidade} aluno(s) × ${moeda(escola.valorPorAluno)}. Valor mínimo: ${moeda(escola.valorMinimo)}. Quantidade mínima: ${escola.quantidadeMinimaAlunos} aluno(s).`;
       const criadoEm = new Date().toISOString();
 
-      novasContas.push({
+      const cobranca: Conta = {
         id: idCobranca,
         descricao: `Plataforma Treinei, Passei! - ${escola.nome} - ${competencia}`,
         valor: valorCobranca,
@@ -723,11 +747,16 @@ function Escolas({
         status: "Pendente",
         tipo: "receber",
         origem: "escola",
+        criadoPorId: usuarioAtual.id,
+        criadoPorNome: usuarioAtual.nome,
+        criadoPorPerfil: usuarioAtual.perfil,
         criadoEm,
-      });
+      };
+      novasContas.push(cobranca);
+      contasCriadas.push(cobranca);
 
       if (parceiro && valorRepasse > 0 && !novasContas.some((item) => item.id === idRepasse)) {
-        novasContas.push({
+        const repasse: Conta = {
           id: idRepasse,
           descricao: `Repasse parceiro ${parceiro.nome} - ${escola.nome} - ${competencia}`,
           valor: valorRepasse,
@@ -739,8 +768,13 @@ function Escolas({
           status: "Pendente",
           tipo: "pagar",
           origem: "repasse-escola",
+          criadoPorId: usuarioAtual.id,
+          criadoPorNome: usuarioAtual.nome,
+          criadoPorPerfil: usuarioAtual.perfil,
           criadoEm,
-        });
+        };
+        novasContas.push(repasse);
+        contasCriadas.push(repasse);
       }
 
       novosLancamentos.push({
@@ -763,6 +797,16 @@ function Escolas({
       return;
     }
 
+    try {
+      await Promise.all(
+        contasCriadas.map((conta) => salvarContaEstruturada(conta, usuarioAtual.id))
+      );
+    } catch (erro) {
+      console.error("Erro ao salvar cobranças em lote:", erro);
+      alert("Não foi possível salvar as cobranças em Contas a Receber. Nenhuma cobrança foi concluída.");
+      return;
+    }
+
     localStorage.setItem(CHAVE_CONTAS, JSON.stringify(novasContas));
     const novosIds = new Set(novosLancamentos.map((item) => item.id));
     setDados((atual) => ({
@@ -780,6 +824,24 @@ function Escolas({
     setSelecionadasLote({});
     window.dispatchEvent(new Event("financeiro-contas-atualizadas"));
     alert(`${novosLancamentos.length} cobrança(s) gerada(s) com sucesso.${duplicadas ? ` ${duplicadas} já existente(s) foram ignorada(s).` : ""}`);
+  };
+
+  const abrirContaReceber = async (conta: Conta) => {
+    try {
+      await salvarContaEstruturada(
+        {
+          ...conta,
+          criadoPorId: conta.criadoPorId ?? usuarioAtual.id,
+          criadoPorNome: conta.criadoPorNome ?? usuarioAtual.nome,
+          criadoPorPerfil: conta.criadoPorPerfil ?? usuarioAtual.perfil,
+        },
+        usuarioAtual.id
+      );
+      onAbrirContasReceber?.(conta.id);
+    } catch (erro) {
+      console.error("Erro ao recuperar cobrança da escola:", erro);
+      alert("Não foi possível disponibilizar esta cobrança em Contas a Receber. Tente novamente.");
+    }
   };
   return (
     <div>
@@ -1446,9 +1508,29 @@ function Escolas({
           </h2>
           {dados.lancamentos.map(
             (item) => {
-              const contaCobranca = lerContas().find(
-                (conta) => conta.id === `escola-cobranca-${item.escolaId}-${item.competencia}`
+              const escolaDoLancamento = dados.escolas.find(
+                (escola) => escola.id === item.escolaId
               );
+              const idContaCobranca = `escola-cobranca-${item.escolaId}-${item.competencia}`;
+              const contaCobranca: Conta = lerContas().find(
+                (conta) => conta.id === idContaCobranca
+              ) ?? {
+                id: idContaCobranca,
+                descricao: `Plataforma Treinei, Passei! - ${item.escolaNome} - ${item.competencia}`,
+                valor: item.valorCobranca,
+                vencimento: dataVencimento(
+                  item.competencia,
+                  escolaDoLancamento?.diaVencimento ?? 10
+                ),
+                categoria: "Plataforma Treinei, Passei!",
+                banco: escolaDoLancamento?.bancoCobranca ?? "",
+                unidade: escolaDoLancamento?.unidade ?? "TREINEI, PASSEI!",
+                observacao: `${item.numeroAlunos} aluno(s) × ${moeda(item.valorPorAluno)}.`,
+                status: "Pendente",
+                tipo: "receber",
+                origem: "escola",
+                criadoEm: item.criadoEm,
+              };
               const concluida = contaCobranca?.status === "Recebido" || contaCobranca?.status === "Pago";
               return (
               <div
@@ -1485,7 +1567,7 @@ function Escolas({
                     {contaCobranca?.status ?? "Pendente"}
                   </span>
                   {onAbrirContasReceber && (
-                    <button type="button" style={estilos.botaoEditar} onClick={onAbrirContasReceber}>
+                    <button type="button" style={estilos.botaoEditar} onClick={() => void abrirContaReceber(contaCobranca)}>
                       {concluida ? "Ver em Contas a Receber" : "Dar baixa"}
                     </button>
                   )}

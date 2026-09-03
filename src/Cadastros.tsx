@@ -234,7 +234,7 @@ function Cadastros({
   onAbrirContasReceber,
 }: {
   usuarioAtual: UsuarioSessao;
-  onAbrirContasReceber?: () => void;
+  onAbrirContasReceber?: (contaId: string) => void;
 }) {
   const exibirCamposFinanceirosLegados =
     useMemo(() => false, []);
@@ -1598,6 +1598,7 @@ function Cadastros({
           parceiros={
             dados.parceiros
           }
+          usuarioAtual={usuarioAtual}
           onAbrirContasReceber={onAbrirContasReceber}
         />
       )}

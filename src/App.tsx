@@ -344,6 +344,8 @@ function App() {
     pagina,
     setPagina,
   ] = useState("Dashboard");
+  const [contaReceberInicialId, setContaReceberInicialId] =
+    useState<string | null>(null);
 
   const [
     menuMobileAberto,
@@ -3060,7 +3062,10 @@ function App() {
           "Cadastros" && (
           <Cadastros
             usuarioAtual={usuarioAtual}
-            onAbrirContasReceber={() => setPagina("Contas a Receber")}
+            onAbrirContasReceber={(contaId) => {
+              setContaReceberInicialId(contaId);
+              setPagina("Contas a Receber");
+            }}
           />
         )}
 
@@ -3273,6 +3278,8 @@ function App() {
           "Contas a Receber" && (
           <Contas
             tipo="receber"
+            contaInicialId={contaReceberInicialId}
+            onConsumirContaInicial={() => setContaReceberInicialId(null)}
 
             onBaixar={
               baixarContaFinanceira
