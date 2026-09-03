@@ -234,6 +234,7 @@ function Escolas({
     alunosDoMes,
     setAlunosDoMes,
   ] = useState(0);
+  const [selecionadasLote, setSelecionadasLote] = useState<Record<string, number>>({});
   const [
     busca,
     setBusca,
@@ -656,6 +657,128 @@ function Escolas({
       );
     };
 
+  const quantidadeSugerida = (escola: Escola) =>
+    dados.lancamentos
+      .filter((item) => item.escolaId === escola.id)
+      .sort((a, b) => b.competencia.localeCompare(a.competencia))[0]
+      ?.numeroAlunos ?? escola.numeroAlunos;
+
+  const alternarEscolaLote = (escola: Escola) => {
+    setSelecionadasLote((atuais) => {
+      if (Object.prototype.hasOwnProperty.call(atuais, escola.id)) {
+        const proximas = { ...atuais };
+        delete proximas[escola.id];
+        return proximas;
+      }
+      return { ...atuais, [escola.id]: quantidadeSugerida(escola) };
+    });
+  };
+
+  const gerarCobrancasEmLote = () => {
+    if (!competencia) {
+      alert("Selecione a competência.");
+      return;
+    }
+    const escolasDoLote = Object.entries(selecionadasLote)
+      .map(([id, quantidade]) => ({
+        escola: dados.escolas.find((item) => item.id === id),
+        quantidade: Math.max(0, Number(quantidade) || 0),
+      }))
+      .filter((item): item is { escola: Escola; quantidade: number } => Boolean(item.escola));
+    if (escolasDoLote.length === 0) {
+      alert("Selecione pelo menos uma escola.");
+      return;
+    }
+
+    const contas = lerContas();
+    const novasContas = [...contas];
+    const novosLancamentos: LancamentoEscola[] = [];
+    const quantidadesAtualizadas = new Map<string, number>();
+    let duplicadas = 0;
+
+    escolasDoLote.forEach(({ escola, quantidade }) => {
+      const idCobranca = `escola-cobranca-${escola.id}-${competencia}`;
+      if (novasContas.some((item) => item.id === idCobranca)) {
+        duplicadas += 1;
+        return;
+      }
+      const idRepasse = `escola-repasse-${escola.id}-${competencia}`;
+      const valorCobranca = calcularCobranca(escola, quantidade);
+      const valorRepasse = calcularRepasse(escola, quantidade, valorCobranca);
+      const parceiro = parceiros.find((item) => item.id === escola.parceiroId);
+      const descricaoDetalhada = `${quantidade} aluno(s) × ${moeda(escola.valorPorAluno)}. Valor mínimo: ${moeda(escola.valorMinimo)}. Quantidade mínima: ${escola.quantidadeMinimaAlunos} aluno(s).`;
+      const criadoEm = new Date().toISOString();
+
+      novasContas.push({
+        id: idCobranca,
+        descricao: `Plataforma Treinei, Passei! - ${escola.nome} - ${competencia}`,
+        valor: valorCobranca,
+        vencimento: dataVencimento(competencia, escola.diaVencimento),
+        categoria: "Plataforma Treinei, Passei!",
+        banco: escola.bancoCobranca,
+        unidade: escola.unidade,
+        observacao: descricaoDetalhada,
+        status: "Pendente",
+        tipo: "receber",
+        origem: "escola",
+        criadoEm,
+      });
+
+      if (parceiro && valorRepasse > 0 && !novasContas.some((item) => item.id === idRepasse)) {
+        novasContas.push({
+          id: idRepasse,
+          descricao: `Repasse parceiro ${parceiro.nome} - ${escola.nome} - ${competencia}`,
+          valor: valorRepasse,
+          vencimento: dataVencimento(competencia, escola.diaVencimento),
+          categoria: "Repasse de Parceiro",
+          banco: escola.bancoRepasse || escola.bancoCobranca,
+          unidade: escola.unidade,
+          observacao: `Repasse ${escola.tipoRepasse.toLowerCase()} referente à cobrança da plataforma. ${descricaoDetalhada}`,
+          status: "Pendente",
+          tipo: "pagar",
+          origem: "repasse-escola",
+          criadoEm,
+        });
+      }
+
+      novosLancamentos.push({
+        id: `lancamento-${escola.id}-${competencia}`,
+        escolaId: escola.id,
+        escolaNome: escola.nome,
+        competencia,
+        numeroAlunos: quantidade,
+        valorPorAluno: escola.valorPorAluno,
+        valorCobranca,
+        parceiroNome: parceiro?.nome ?? "",
+        valorRepasse,
+        criadoEm,
+      });
+      quantidadesAtualizadas.set(escola.id, quantidade);
+    });
+
+    if (novosLancamentos.length === 0) {
+      alert("Todas as escolas selecionadas já possuem cobrança nesta competência.");
+      return;
+    }
+
+    localStorage.setItem(CHAVE_CONTAS, JSON.stringify(novasContas));
+    const novosIds = new Set(novosLancamentos.map((item) => item.id));
+    setDados((atual) => ({
+      ...atual,
+      escolas: atual.escolas.map((item) =>
+        quantidadesAtualizadas.has(item.id)
+          ? { ...item, numeroAlunos: quantidadesAtualizadas.get(item.id) ?? item.numeroAlunos }
+          : item
+      ),
+      lancamentos: [
+        ...novosLancamentos,
+        ...atual.lancamentos.filter((item) => !novosIds.has(item.id)),
+      ],
+    }));
+    setSelecionadasLote({});
+    window.dispatchEvent(new Event("financeiro-contas-atualizadas"));
+    alert(`${novosLancamentos.length} cobrança(s) gerada(s) com sucesso.${duplicadas ? ` ${duplicadas} já existente(s) foram ignorada(s).` : ""}`);
+  };
   return (
     <div>
       <section
@@ -1130,6 +1253,42 @@ function Escolas({
         >
           Gerar cobrança mensal
         </button>
+        <div style={estilos.lote}>
+          <div style={estilos.topoLote}>
+            <div>
+              <h3 style={{ margin: 0 }}>Lançamento em lote</h3>
+              <p style={estilos.textoCinza}>Selecione as escolas e ajuste a quantidade de alunos de cada uma.</p>
+            </div>
+            <strong>{Object.keys(selecionadasLote).length} selecionada(s)</strong>
+          </div>
+          <div style={estilos.listaLote}>
+            {dados.escolas.filter((item) => item.situacao === "Ativa").map((escola) => {
+              const selecionada = Object.prototype.hasOwnProperty.call(selecionadasLote, escola.id);
+              return (
+                <div key={escola.id} style={{ ...estilos.itemLote, background: selecionada ? "#eff6ff" : "white" }}>
+                  <label style={estilos.selecaoLote}>
+                    <input type="checkbox" checked={selecionada} onChange={() => alternarEscolaLote(escola)} />
+                    <span><strong>{escola.nome}</strong><br /><small>{escola.unidade}</small></span>
+                  </label>
+                  <label style={estilos.quantidadeLote}>
+                    <span>Alunos</span>
+                    <input
+                      type="number"
+                      min={0}
+                      disabled={!selecionada}
+                      value={selecionada ? selecionadasLote[escola.id] : quantidadeSugerida(escola)}
+                      onChange={(evento) => setSelecionadasLote((atuais) => ({ ...atuais, [escola.id]: Math.max(0, Number(evento.target.value) || 0) }))}
+                      style={estilos.inputQuantidade}
+                    />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+          <button type="button" onClick={gerarCobrancasEmLote} style={{ ...estilos.botaoPrincipal, marginTop: 16 }}>
+            Gerar cobranças selecionadas
+          </button>
+        </div>
       </section>
 
       <section
@@ -1559,6 +1718,24 @@ const estilos: Record<
     border:
       "1px solid #e2e8f0",
     borderRadius: 12,
+  },
+  lote: {
+    marginTop: 24, paddingTop: 22, borderTop: "1px solid #dbe3ee",
+  },
+  topoLote: {
+    display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start", flexWrap: "wrap",
+  },
+  listaLote: {
+    display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 10, marginTop: 16,
+  },
+  itemLote: {
+    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+    border: "1px solid #dbe3ee", borderRadius: 10, padding: 12,
+  },
+  selecaoLote: { display: "flex", alignItems: "center", gap: 10, cursor: "pointer" },
+  quantidadeLote: { display: "flex", alignItems: "center", gap: 8, fontSize: 13 },
+  inputQuantidade: {
+    width: 76, padding: "8px 9px", border: "1px solid #cbd5e1", borderRadius: 8,
   },
   topoLista: {
     display: "flex",
