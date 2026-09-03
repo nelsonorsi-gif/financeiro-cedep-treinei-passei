@@ -3060,6 +3060,7 @@ function App() {
           "Cadastros" && (
           <Cadastros
             usuarioAtual={usuarioAtual}
+            onAbrirContasReceber={() => setPagina("Contas a Receber")}
           />
         )}
 

@@ -62,6 +62,7 @@ type DadosEscolas = {
 
 type Props = {
   parceiros: Parceiro[];
+  onAbrirContasReceber?: () => void;
 };
 
 const escolaVazia = (): Omit<
@@ -197,6 +198,7 @@ const lerContas = (): Conta[] => {
 
 function Escolas({
   parceiros,
+  onAbrirContasReceber,
 }: Props) {
   const [
     dados,
@@ -1443,7 +1445,12 @@ function Escolas({
             Histórico de cobranças
           </h2>
           {dados.lancamentos.map(
-            (item) => (
+            (item) => {
+              const contaCobranca = lerContas().find(
+                (conta) => conta.id === `escola-cobranca-${item.escolaId}-${item.competencia}`
+              );
+              const concluida = contaCobranca?.status === "Recebido" || contaCobranca?.status === "Pago";
+              return (
               <div
                 key={item.id}
                 style={
@@ -1473,8 +1480,19 @@ function Escolas({
                     )}
                   </p>
                 </div>
+                <div style={estilos.acoesHistorico}>
+                  <span style={{ ...estilos.situacao, background: concluida ? "#dcfce7" : "#fef3c7", color: concluida ? "#166534" : "#92400e" }}>
+                    {contaCobranca?.status ?? "Pendente"}
+                  </span>
+                  {onAbrirContasReceber && (
+                    <button type="button" style={estilos.botaoEditar} onClick={onAbrirContasReceber}>
+                      {concluida ? "Ver em Contas a Receber" : "Dar baixa"}
+                    </button>
+                  )}
+                </div>
               </div>
-            )
+            );
+            }
           )}
         </section>
       )}
@@ -1755,6 +1773,9 @@ const estilos: Record<
     borderBottom:
       "1px solid #e2e8f0",
     flexWrap: "wrap",
+  },
+  acoesHistorico: {
+    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
   },
   situacao: {
     padding: "7px 11px",

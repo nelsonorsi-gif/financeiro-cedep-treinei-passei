@@ -231,8 +231,10 @@ const parceiroVazio = (): Omit<
 
 function Cadastros({
   usuarioAtual,
+  onAbrirContasReceber,
 }: {
   usuarioAtual: UsuarioSessao;
+  onAbrirContasReceber?: () => void;
 }) {
   const exibirCamposFinanceirosLegados =
     useMemo(() => false, []);
@@ -1596,6 +1598,7 @@ function Cadastros({
           parceiros={
             dados.parceiros
           }
+          onAbrirContasReceber={onAbrirContasReceber}
         />
       )}
     </div>
