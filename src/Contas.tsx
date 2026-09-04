@@ -14,6 +14,7 @@ import {
   carregarContasEstruturadas,
   excluirContaEstruturada,
   registrarBaixaEstruturada,
+  registrarEstornoBaixaEstruturada,
   salvarContaEstruturada,
 } from "./servicos/contasEstruturadas";
 import { mensagemCaixaFechado, registrarMovimentoCaixa, usuarioPodeMovimentar } from "./servicos/caixaOperacional";
@@ -786,6 +787,11 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
     };
 
     try {
+      await registrarEstornoBaixaEstruturada({
+        contaId: conta.id,
+        usuarioId: usuarioAtual.id,
+        motivo: motivo.trim(),
+      });
       await salvarContaEstruturada(atualizada, usuarioAtual.id);
       registrarMovimentoCaixa(usuarioAtual, {
         natureza: tipo === "receber" ? "estorno_entrada" : "estorno_saida",

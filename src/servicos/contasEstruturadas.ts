@@ -4,6 +4,7 @@ import {
 } from "../lib/supabase";
 import type { Perfil } from "../Acesso";
 import type { Conta } from "../Contas";
+import { normalizarUnidade } from "../utils/unidades";
 
 type ContaBanco = {
   id: string;
@@ -53,7 +54,7 @@ const paraConta = (registro: ContaBanco): Conta => ({
   vencimento: registro.vencimento,
   categoria: registro.categoria,
   banco: registro.banco,
-  unidade: registro.unidade,
+  unidade: normalizarUnidade(registro.unidade),
   observacao: registro.observacao,
   status: registro.status,
   origem: registro.origem,
@@ -81,7 +82,7 @@ const paraBanco = (
   vencimento: conta.vencimento,
   categoria: conta.categoria,
   banco: conta.banco,
-  unidade: conta.unidade,
+  unidade: normalizarUnidade(conta.unidade),
   observacao: conta.observacao,
   status: conta.status,
   origem: conta.origem ?? "manual",
@@ -189,6 +190,38 @@ export async function registrarBaixaEstruturada({
     conta,
     usuarioId
   );
+}
+
+export async function registrarEstornoBaixaEstruturada({
+  contaId,
+  usuarioId,
+  motivo,
+}: {
+  contaId: string;
+  usuarioId: string;
+  motivo: string;
+}) {
+  const banco = cliente();
+  if (!banco) return;
+  const { data, error: erroConsulta } = await banco
+    .from("baixas_financeiras")
+    .select("id")
+    .eq("conta_id", contaId)
+    .is("estornado_em", null)
+    .order("criado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (erroConsulta) throw erroConsulta;
+  if (!data) return;
+  const { error } = await banco
+    .from("baixas_financeiras")
+    .update({
+      estornado_em: new Date().toISOString(),
+      estornado_por: usuarioId,
+      motivo_estorno: motivo,
+    })
+    .eq("id", data.id);
+  if (error) throw error;
 }
 
 export async function sincronizarContasLocais({

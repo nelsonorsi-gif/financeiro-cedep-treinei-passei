@@ -28,6 +28,7 @@ import CompromissosMensais, {
   type PagamentoCompromisso,
 } from "./CompromissosMensais";
 import DespesasPessoais, { type DespesaPessoal } from "./DespesasPessoais";
+import { normalizarUnidade } from "./utils/unidades";
 import {
   TelaLogin,
   TelaLoginOnline,
@@ -90,6 +91,7 @@ type Lancamento = {
   estornoDeId?: string;
   motivoEstorno?: string;
   estornadoEm?: string;
+  contaId?: string;
   taxaCartao?: number;
   valorLiquidoCartao?: number;
   parcelasCartao?: number;
@@ -678,7 +680,10 @@ function App() {
           );
 
         setLancamentos(
-          dadosCorrigidos
+          dadosCorrigidos.map((item) => ({
+            ...item,
+            unidade: normalizarUnidade(item.unidade || ""),
+          }))
         );
       }
 
@@ -718,7 +723,10 @@ function App() {
         Array.isArray(detalhe.valor)
       ) {
         setLancamentos(
-          detalhe.valor as Lancamento[]
+          (detalhe.valor as Lancamento[]).map((item) => ({
+            ...item,
+            unidade: normalizarUnidade(item.unidade || ""),
+          }))
         );
       }
       if (
@@ -1042,8 +1050,8 @@ function App() {
       () =>
         Array.from(
           new Set([
-            ...configuracoes.unidades,
-            ...lancamentos.map((item) => item.unidade.trim()),
+            ...configuracoes.unidades.map(normalizarUnidade),
+            ...lancamentos.map((item) => normalizarUnidade(item.unidade || "")),
           ].filter(Boolean))
         ).sort((a, b) => a.localeCompare(b, "pt-BR")),
       [configuracoes.unidades, lancamentos]
@@ -1058,8 +1066,7 @@ function App() {
             item.competencia === competenciaBancos;
           const correspondeUnidade =
             unidadeBancos === "Todas" ||
-            item.unidade.trim().toLocaleUpperCase("pt-BR") ===
-              unidadeBancos.toLocaleUpperCase("pt-BR");
+            normalizarUnidade(item.unidade || "") === normalizarUnidade(unidadeBancos);
           const correspondeInicio =
             !dataInicialBancos ||
             Boolean(item.data && item.data >= dataInicialBancos);
@@ -1867,7 +1874,14 @@ function App() {
   const estornarContaFinanceira = (conta: Conta, valor: number, motivo: string) => {
     if (!usuarioAtual) return;
     const data = hojeISO();
-    const lancamento: Lancamento = {
+    const prefixoBaixa = `baixa-${conta.id}-`;
+    setLancamentos((atuais) => {
+      const original = [...atuais].reverse().find((item) =>
+        !item.estornadoEm &&
+        !item.estornoDeId &&
+        (item.contaId === conta.id || item.id.startsWith(prefixoBaixa))
+      );
+      const lancamento: Lancamento = {
       id: "estorno-conta-" + conta.id + "-" + Date.now(),
       dia: diaDaData(data),
       data,
@@ -1880,13 +1894,22 @@ function App() {
       saida: conta.tipo === "receber" ? valor : 0,
       unidade: conta.unidade,
       origem: "manual",
-      estornoDeId: conta.id,
+      estornoDeId: original?.id ?? conta.id,
+      contaId: conta.id,
       motivoEstorno: motivo,
       usuarioResponsavelId: usuarioAtual.id,
       usuarioResponsavelNome: usuarioAtual.nome,
       operacaoAdministrativa: usuarioAtual.perfil === "Administrador",
-    };
-    setLancamentos((atuais) => [...atuais, lancamento]);
+      };
+      return [
+        ...atuais.map((item) =>
+          item.id === original?.id
+            ? { ...item, estornadoEm: new Date().toISOString() }
+            : item
+        ),
+        lancamento,
+      ];
+    });
   };
   const cancelarEdicao =
     () => {
@@ -1973,6 +1996,7 @@ function App() {
 
           origem:
             "manual",
+          contaId: conta.id,
         };
 
       const lancamentosNovos: Lancamento[] = [novoLancamento];

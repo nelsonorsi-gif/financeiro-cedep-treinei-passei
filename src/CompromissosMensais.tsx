@@ -161,6 +161,23 @@ export default function CompromissosMensais({
   }, [carregar]);
 
   useEffect(() => {
+    if (!supabase) return;
+    const canal = supabase
+      .channel(`compromissos-mensais-${competencia}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "ocorrencias_mensais" },
+        () => void carregar().catch((erro) =>
+          console.error("Erro ao atualizar compromissos:", erro)
+        )
+      )
+      .subscribe();
+    return () => {
+      void supabase?.removeChannel(canal);
+    };
+  }, [carregar, competencia]);
+
+  useEffect(() => {
     const atualizarListas = () => {
       setFuncionarios(lerFuncionarios());
       setCategoriasPessoais(lerListaLocal(CHAVE_CATEGORIAS_PESSOAIS, categoriasPessoaisPadrao));

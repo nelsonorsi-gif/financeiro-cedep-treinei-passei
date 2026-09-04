@@ -4,6 +4,7 @@ import {
   type CSSProperties,
 } from "react";
 import { carregarTaxasCartao, salvarTaxasCartao, type TaxaCartao } from "./servicos/taxasCartao";
+import { normalizarListaUnidades, normalizarUnidade } from "./utils/unidades";
 
 export type ConfiguracoesFinanceiras = {
   bancos: string[];
@@ -99,7 +100,7 @@ export function carregarConfiguracoes(): ConfiguracoesFinanceiras {
           Array.isArray(
             dados.unidades
           )
-            ? dados.unidades
+            ? normalizarListaUnidades(dados.unidades)
             : CONFIGURACOES_PADRAO.unidades,
       };
     }
@@ -154,6 +155,7 @@ function Configuracoes() {
     novosDados:
       ConfiguracoesFinanceiras
   ) => {
+    novosDados = { ...novosDados, unidades: normalizarListaUnidades(novosDados.unidades) };
     setConfiguracoes(
       novosDados
     );
@@ -187,8 +189,7 @@ function Configuracoes() {
 
     limpar: () => void
   ) => {
-    const texto =
-      valor.trim();
+    const texto = campo === "unidades" ? normalizarUnidade(valor) : valor.trim();
 
     if (!texto) {
       alert(
@@ -201,8 +202,8 @@ function Configuracoes() {
     const jaExiste =
       configuracoes[campo].some(
         (item) =>
-          item.toLowerCase() ===
-          texto.toLowerCase()
+          (campo === "unidades" ? normalizarUnidade(item) : item.toLowerCase()) ===
+          (campo === "unidades" ? texto : texto.toLowerCase())
       );
 
     if (jaExiste) {

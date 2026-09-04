@@ -74,6 +74,7 @@ const serializar = (
 ) => JSON.stringify(valor);
 
 const CHAVES_COM_MESCLAGEM = new Set<string>([
+  "financeiro-cedep-lancamentos",
   "financeiro-cedep-cadastros",
   "financeiro-cedep-academico",
 ]);
@@ -396,10 +397,20 @@ export function iniciarSincronizacaoAutomatica(
             return [];
           }
 
-          conhecidos.set(
-            chave,
-            atual
-          );
+          const anterior = conhecidos.get(chave);
+          conhecidos.set(chave, atual);
+
+          let remocoes: Record<string, string[]> = {};
+          if (chave === "financeiro-cedep-lancamentos" && anterior) {
+            try {
+              const antes = JSON.parse(anterior) as Array<{ id?: string }>;
+              const depois = Array.isArray(valor) ? valor as Array<{ id?: string }> : [];
+              const idsDepois = new Set(depois.map((item) => item.id).filter(Boolean));
+              remocoes = { itens: antes.map((item) => item.id).filter((id): id is string => Boolean(id) && !idsDepois.has(id)) };
+            } catch {
+              remocoes = {};
+            }
+          }
 
           return [
             {
@@ -409,6 +420,7 @@ export function iniciarSincronizacaoAutomatica(
                 usuarioId,
               updated_at:
                 new Date().toISOString(),
+              remocoes,
             },
           ];
         }
@@ -433,7 +445,8 @@ export function iniciarSincronizacaoAutomatica(
         const confirmado = await salvarChaveCompartilhada(
           item.chave,
           item.valor,
-          usuarioId
+          usuarioId,
+          item.remocoes
         );
         conhecidos.set(item.chave, serializar(confirmado));
       }
