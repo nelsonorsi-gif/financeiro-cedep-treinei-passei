@@ -28,7 +28,7 @@ import CompromissosMensais, {
   type PagamentoCompromisso,
 } from "./CompromissosMensais";
 import DespesasPessoais, { type DespesaPessoal } from "./DespesasPessoais";
-import { normalizarUnidade } from "./utils/unidades";
+import { normalizarListaUnidades, normalizarUnidade } from "./utils/unidades";
 import {
   TelaLogin,
   TelaLoginOnline,
@@ -539,6 +539,12 @@ function App() {
     filtroTipo,
     setFiltroTipo,
   ] = useState("Todos");
+
+  const [buscaFinanceira, setBuscaFinanceira] = useState("");
+  const [dataInicialFinanceira, setDataInicialFinanceira] = useState("");
+  const [dataFinalFinanceira, setDataFinalFinanceira] = useState("");
+  const [unidadeFinanceira, setUnidadeFinanceira] = useState("Todas");
+  const [pagamentoFinanceiro, setPagamentoFinanceiro] = useState("Todos");
 
   const [
     paginaLancamentos,
@@ -1796,6 +1802,17 @@ function App() {
     (
       lancamento: Lancamento
     ) => {
+      if (
+        lancamento.contaId ||
+        lancamento.caixaId ||
+        lancamento.movimentoCaixaId
+      ) {
+        alert(
+          "Este lançamento está vinculado a uma conta ou movimentação de caixa. Use Estornar para preservar o histórico e manter os módulos sincronizados."
+        );
+        return;
+      }
+
       const confirmar =
         window.confirm(
           `Deseja realmente excluir "${lancamento.descricao}"?`
@@ -2269,6 +2286,42 @@ function App() {
       (item) =>
         item.saida > 0
     );
+
+  const filtrarFinanceiro = (item: Lancamento) => {
+    const buscaNormalizada = buscaFinanceira.trim().toLocaleLowerCase("pt-BR");
+    const textoItem = [
+      item.descricao,
+      item.tipoEntrada,
+      item.tipoSaida,
+      item.formaPagamento,
+      item.unidade,
+    ].join(" ").toLocaleLowerCase("pt-BR");
+
+    return (
+      (!buscaNormalizada || textoItem.includes(buscaNormalizada)) &&
+      (!dataInicialFinanceira || item.data >= dataInicialFinanceira) &&
+      (!dataFinalFinanceira || item.data <= dataFinalFinanceira) &&
+      (unidadeFinanceira === "Todas" || item.unidade === unidadeFinanceira) &&
+      (pagamentoFinanceiro === "Todos" || item.formaPagamento === pagamentoFinanceiro)
+    );
+  };
+
+  const receitasFiltradas = receitas.filter(filtrarFinanceiro);
+  const despesasFiltradas = despesas.filter(filtrarFinanceiro);
+  const totalReceitasFiltradas = receitasFiltradas.reduce(
+    (total, item) => total + item.entrada,
+    0
+  );
+  const totalDespesasFiltradas = despesasFiltradas.reduce(
+    (total, item) => total + item.saida,
+    0
+  );
+  const unidadesFinanceiras = normalizarListaUnidades(
+    lancamentos.map((item) => item.unidade).filter(Boolean)
+  );
+  const pagamentosFinanceiros = Array.from(
+    new Set(lancamentos.map((item) => item.formaPagamento).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const modulosDoSistema = [
     "Dashboard",
@@ -3184,19 +3237,39 @@ function App() {
                 Receitas cadastradas
               </h2>
 
-              {receitas.length ===
+              <FiltrosFinanceiros
+                busca={buscaFinanceira}
+                setBusca={setBuscaFinanceira}
+                dataInicial={dataInicialFinanceira}
+                setDataInicial={setDataInicialFinanceira}
+                dataFinal={dataFinalFinanceira}
+                setDataFinal={setDataFinalFinanceira}
+                unidade={unidadeFinanceira}
+                setUnidade={setUnidadeFinanceira}
+                pagamento={pagamentoFinanceiro}
+                setPagamento={setPagamentoFinanceiro}
+                unidades={unidadesFinanceiras}
+                pagamentos={pagamentosFinanceiros}
+              />
+
+              <div style={estilos.resumoFiltrosFinanceiros}>
+                <Card titulo="Receitas encontradas" valor={String(receitasFiltradas.length)} />
+                <Card titulo="Total das receitas" valor={moeda(totalReceitasFiltradas)} corValor="#2563eb" />
+              </div>
+
+              {receitasFiltradas.length ===
               0 ? (
                 <p
                   style={
                     estilos.textoCinza
                   }
                 >
-                  Nenhuma receita cadastrada.
+                  Nenhuma receita encontrada com os filtros informados.
                 </p>
               ) : (
                 <Tabela
                   lancamentos={[
-                    ...receitas,
+                    ...receitasFiltradas,
                   ].reverse()}
                   paginar
 
@@ -3266,19 +3339,39 @@ function App() {
                 Despesas cadastradas
               </h2>
 
-              {despesas.length ===
+              <FiltrosFinanceiros
+                busca={buscaFinanceira}
+                setBusca={setBuscaFinanceira}
+                dataInicial={dataInicialFinanceira}
+                setDataInicial={setDataInicialFinanceira}
+                dataFinal={dataFinalFinanceira}
+                setDataFinal={setDataFinalFinanceira}
+                unidade={unidadeFinanceira}
+                setUnidade={setUnidadeFinanceira}
+                pagamento={pagamentoFinanceiro}
+                setPagamento={setPagamentoFinanceiro}
+                unidades={unidadesFinanceiras}
+                pagamentos={pagamentosFinanceiros}
+              />
+
+              <div style={estilos.resumoFiltrosFinanceiros}>
+                <Card titulo="Despesas encontradas" valor={String(despesasFiltradas.length)} />
+                <Card titulo="Total das despesas" valor={moeda(totalDespesasFiltradas)} corValor="#dc2626" />
+              </div>
+
+              {despesasFiltradas.length ===
               0 ? (
                 <p
                   style={
                     estilos.textoCinza
                   }
                 >
-                  Nenhuma despesa cadastrada.
+                  Nenhuma despesa encontrada com os filtros informados.
                 </p>
               ) : (
                 <Tabela
                   lancamentos={[
-                    ...despesas,
+                    ...despesasFiltradas,
                   ].reverse()}
                   paginar
 
@@ -4570,6 +4663,63 @@ function Filtros({
   );
 }
 
+function FiltrosFinanceiros({
+  busca, setBusca, dataInicial, setDataInicial, dataFinal, setDataFinal,
+  unidade, setUnidade, pagamento, setPagamento, unidades, pagamentos,
+}: {
+  busca: string; setBusca: (valor: string) => void;
+  dataInicial: string; setDataInicial: (valor: string) => void;
+  dataFinal: string; setDataFinal: (valor: string) => void;
+  unidade: string; setUnidade: (valor: string) => void;
+  pagamento: string; setPagamento: (valor: string) => void;
+  unidades: string[]; pagamentos: string[];
+}) {
+  const limpar = () => {
+    setBusca("");
+    setDataInicial("");
+    setDataFinal("");
+    setUnidade("Todas");
+    setPagamento("Todos");
+  };
+
+  return (
+    <div style={estilos.filtrosFinanceiros}>
+      <label style={estilos.campoGrupo}>
+        <strong>Buscar</strong>
+        <input
+          value={busca}
+          placeholder="Descrição, tipo, conta ou unidade..."
+          onChange={(evento) => setBusca(evento.target.value)}
+          style={estilos.input}
+        />
+      </label>
+      <label style={estilos.campoGrupo}>
+        <strong>Data inicial</strong>
+        <input type="date" value={dataInicial} onChange={(evento) => setDataInicial(evento.target.value)} style={estilos.input} />
+      </label>
+      <label style={estilos.campoGrupo}>
+        <strong>Data final</strong>
+        <input type="date" value={dataFinal} onChange={(evento) => setDataFinal(evento.target.value)} style={estilos.input} />
+      </label>
+      <label style={estilos.campoGrupo}>
+        <strong>Unidade</strong>
+        <select value={unidade} onChange={(evento) => setUnidade(evento.target.value)} style={estilos.input}>
+          <option value="Todas">Todas</option>
+          {unidades.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+      </label>
+      <label style={estilos.campoGrupo}>
+        <strong>Forma de pagamento / Conta</strong>
+        <select value={pagamento} onChange={(evento) => setPagamento(evento.target.value)} style={estilos.input}>
+          <option value="Todos">Todos</option>
+          {pagamentos.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+      </label>
+      <button type="button" onClick={limpar} style={estilos.botaoSecundario}>Limpar filtros</button>
+    </div>
+  );
+}
+
 /* =========================================================
    CABEÇALHO
 ========================================================= */
@@ -5093,7 +5243,7 @@ function Tabela({
                         >
                           Estornar
                         </button>
-                      )}                      {excluirLancamento && !estornarLancamento && (
+                      )}                      {excluirLancamento && (
                         <button
                           onClick={() =>
                             excluirLancamento(
@@ -5996,6 +6146,21 @@ const estilos: Record<
     borderRadius: 8,
     cursor: "pointer",
     fontWeight: 700,
+  },
+
+  filtrosFinanceiros: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+    gap: 12,
+    alignItems: "end",
+    margin: "18px 0",
+  },
+
+  resumoFiltrosFinanceiros: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 260px))",
+    gap: 14,
+    marginBottom: 20,
   },
 };
 
