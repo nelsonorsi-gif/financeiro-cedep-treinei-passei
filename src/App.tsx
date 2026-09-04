@@ -1948,6 +1948,7 @@ function App() {
       conta: Conta
     ) => {
       const dataBaixa =
+        conta.dataBaixa ||
         hojeISO();
 
       const novoLancamento: Lancamento =
@@ -3272,6 +3273,7 @@ function App() {
                     ...receitasFiltradas,
                   ].reverse()}
                   paginar
+                  rotuloData="Data do recebimento"
 
                   editarLancamento={
                     editarLancamento
@@ -3374,6 +3376,7 @@ function App() {
                     ...despesasFiltradas,
                   ].reverse()}
                   paginar
+                  rotuloData="Data do pagamento"
 
                   editarLancamento={
                     editarLancamento
@@ -4914,6 +4917,8 @@ function Tabela({
   paginar = false,
 
   ocultarValores = false,
+
+  rotuloData = "Data",
 }: {
   lancamentos:
     Lancamento[];
@@ -4933,6 +4938,8 @@ function Tabela({
   paginar?: boolean;
 
   ocultarValores?: boolean;
+
+  rotuloData?: string;
 }) {
   const [paginaTabela, setPaginaTabela] =
     useState(1);
@@ -5015,7 +5022,7 @@ function Tabela({
                 estilos.th
               }
             >
-              Data
+              {rotuloData}
             </th>
 
             <th

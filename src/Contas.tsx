@@ -508,9 +508,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
           ? "Recebido"
           : "Pago"
         : "Parcial",
-      dataBaixa: quitada
-        ? dataPagamento
-        : undefined,
+      dataBaixa: dataPagamento,
       atualizadoEm:
         new Date().toISOString(),
       atualizadoPorId:

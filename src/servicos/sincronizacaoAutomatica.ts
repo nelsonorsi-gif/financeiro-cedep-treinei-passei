@@ -512,8 +512,6 @@ export function iniciarSincronizacaoAutomatica(
 
         if (
           !novo.chave ||
-          novo.updated_by ===
-            usuarioId ||
           !CHAVES_COMPARTILHADAS.includes(
             novo.chave as (typeof CHAVES_COMPARTILHADAS)[number]
           )
