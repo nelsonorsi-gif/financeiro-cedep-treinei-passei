@@ -2187,10 +2187,22 @@ function App() {
         };
 
       setLancamentos(
-        (atuais) => [
-          ...atuais,
-          novoLancamento,
-        ]
+        (atuais) => {
+          const existente = atuais.find(
+            (item) => item.id === novoLancamento.id
+          );
+          if (
+            existente &&
+            JSON.stringify(existente) === JSON.stringify(novoLancamento)
+          ) {
+            return atuais;
+          }
+          return existente
+            ? atuais.map((item) =>
+                item.id === novoLancamento.id ? novoLancamento : item
+              )
+            : [...atuais, novoLancamento];
+        }
       );
     };
 

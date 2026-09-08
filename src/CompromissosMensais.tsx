@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { UsuarioSessao } from "./Acesso";
 import {
   carregarConfiguracoes,
@@ -123,11 +123,16 @@ export default function CompromissosMensais({
   const [funcionarios, setFuncionarios] = useState<Parceiro[]>(lerFuncionarios);
   const [categoriasPessoais, setCategoriasPessoais] = useState<string[]>(() => lerListaLocal(CHAVE_CATEGORIAS_PESSOAIS, categoriasPessoaisPadrao));
   const [pagamentosPessoais, setPagamentosPessoais] = useState<string[]>(() => lerListaLocal(CHAVE_PAGAMENTOS_PESSOAIS, pagamentosPessoaisPadrao).filter((opcao) => !["pix", "transferência", "transferencia"].includes(opcao.trim().toLowerCase())));
+  const registrarPagamentoRef = useRef(onRegistrarPagamento);
   const configuracoes =
     useMemo(
       carregarConfiguracoes,
       []
     );
+
+  useEffect(() => {
+    registrarPagamentoRef.current = onRegistrarPagamento;
+  }, [onRegistrarPagamento]);
 
   const carregar = useCallback(async () => {
     if (!supabase) return;
@@ -151,6 +156,24 @@ export default function CompromissosMensais({
     setCompromissos((modelos.data ?? []) as Compromisso[]);
     const lista = (itens.data ?? []) as Ocorrencia[];
     setOcorrencias(lista);
+    lista
+      .filter(
+        (item) =>
+          item.escopo === "Empresarial" &&
+          Number(item.valor_pago) > 0 &&
+          Boolean(item.data_pagamento)
+      )
+      .forEach((item) =>
+        registrarPagamentoRef.current({
+          id: `recorrente-pagamento-${item.id}`,
+          descricao: item.descricao,
+          valor: Number(item.valor_pago),
+          data: item.data_pagamento as string,
+          categoria: item.categoria || "Compromisso mensal",
+          banco: item.banco,
+          unidade: item.unidade,
+        })
+      );
     atualizarEspelhoPessoal(
       (pessoais.data ?? []) as Ocorrencia[]
     );
@@ -169,6 +192,13 @@ export default function CompromissosMensais({
         { event: "*", schema: "public", table: "ocorrencias_mensais" },
         () => void carregar().catch((erro) =>
           console.error("Erro ao atualizar compromissos:", erro)
+        )
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "compromissos_recorrentes" },
+        () => void carregar().catch((erro) =>
+          console.error("Erro ao atualizar compromissos recorrentes:", erro)
         )
       )
       .subscribe();
@@ -412,9 +442,9 @@ export default function CompromissosMensais({
         })
         .eq("id", `recorrente-${item.id}`);
       onRegistrarPagamento({
-        id: `recorrente-pagamento-${item.id}-${Date.now()}`,
+        id: `recorrente-pagamento-${item.id}`,
         descricao: item.descricao,
-        valor: pagamento,
+        valor: totalPago,
         data: dataPagamento,
         categoria: item.categoria || "Compromisso mensal",
         banco: formaSelecionada,
