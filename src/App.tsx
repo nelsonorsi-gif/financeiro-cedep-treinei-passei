@@ -789,6 +789,23 @@ function App() {
     carregado,
   ]);
 
+  useEffect(() => {
+    const avisarFalhaSincronizacao = () => {
+      alert(
+        "A gravação online não foi confirmada. Os dados continuam nesta tela e o sistema tentará sincronizar novamente automaticamente. Não atualize a página até a confirmação."
+      );
+    };
+    window.addEventListener(
+      "financeiro-sincronizacao-erro",
+      avisarFalhaSincronizacao
+    );
+    return () =>
+      window.removeEventListener(
+        "financeiro-sincronizacao-erro",
+        avisarFalhaSincronizacao
+      );
+  }, []);
+
   /* =======================================================
      UTILIDADES
   ======================================================= */

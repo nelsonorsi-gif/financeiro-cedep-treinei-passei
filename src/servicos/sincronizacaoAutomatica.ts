@@ -73,6 +73,41 @@ const serializar = (
   valor: unknown
 ) => JSON.stringify(valor);
 
+type ItemComId = {
+  id?: string;
+  [campo: string]: unknown;
+};
+
+const mesclarAlteracoesLocaisPendentes = (
+  baseAnterior: unknown,
+  valorLocal: unknown,
+  valorRemoto: unknown
+) => {
+  if (!Array.isArray(baseAnterior) || !Array.isArray(valorLocal) || !Array.isArray(valorRemoto)) {
+    return valorRemoto;
+  }
+
+  const basePorId = new Map(
+    (baseAnterior as ItemComId[]).filter((item) => item.id).map((item) => [item.id as string, item])
+  );
+  const locais = (valorLocal as ItemComId[]).filter((item) => item.id);
+  const idsLocais = new Set(locais.map((item) => item.id as string));
+  const resultado = new Map(
+    (valorRemoto as ItemComId[]).filter((item) => item.id).map((item) => [item.id as string, item])
+  );
+
+  locais.forEach((item) => {
+    const anterior = basePorId.get(item.id as string);
+    if (!anterior || serializar(anterior) !== serializar(item)) {
+      resultado.set(item.id as string, item);
+    }
+  });
+  basePorId.forEach((_item, id) => {
+    if (!idsLocais.has(id)) resultado.delete(id);
+  });
+  return Array.from(resultado.values());
+};
+
 const CHAVES_COM_MESCLAGEM = new Set<string>([
   "financeiro-cedep-lancamentos",
   "financeiro-cedep-cadastros",
@@ -338,6 +373,7 @@ export function iniciarSincronizacaoAutomatica(
   const conhecidos =
     new Map<string, string>();
   let enviando = false;
+  let erroNotificado = false;
   let contasConhecidas =
     serializar(
       lerValorLocal(
@@ -398,7 +434,6 @@ export function iniciarSincronizacaoAutomatica(
           }
 
           const anterior = conhecidos.get(chave);
-          conhecidos.set(chave, atual);
 
           let remocoes: Record<string, string[]> = {};
           if (chave === "financeiro-cedep-lancamentos" && anterior) {
@@ -456,6 +491,9 @@ export function iniciarSincronizacaoAutomatica(
           .from("erp_dados")
           .upsert(comuns, { onConflict: "chave" });
         if (resultado.error) throw resultado.error;
+        comuns.forEach((item) => {
+          conhecidos.set(item.chave, serializar(item.valor));
+        });
       }
     } catch (falha) {
       erro = falha;
@@ -464,6 +502,7 @@ export function iniciarSincronizacaoAutomatica(
     enviando = false;
 
     if (!erro) {
+      erroNotificado = false;
       localStorage.setItem(
         "financeiro-cedep-ultima-sincronizacao",
         new Date().toLocaleString(
@@ -475,11 +514,14 @@ export function iniciarSincronizacaoAutomatica(
         "Erro na sincronização automática:",
         erro
       );
-      window.dispatchEvent(
-        new CustomEvent("financeiro-sincronizacao-erro", {
-          detail: { erro },
-        })
-      );
+      if (!erroNotificado) {
+        erroNotificado = true;
+        window.dispatchEvent(
+          new CustomEvent("financeiro-sincronizacao-erro", {
+            detail: { erro },
+          })
+        );
+      }
     }
   };
 
@@ -519,9 +561,22 @@ export function iniciarSincronizacaoAutomatica(
           return;
         }
 
+        const valorLocal = lerValorLocal(novo.chave);
+        const baseAnteriorSerializada = conhecidos.get(novo.chave);
+        const baseAnterior = baseAnteriorSerializada
+          ? JSON.parse(baseAnteriorSerializada)
+          : undefined;
+        const temAlteracaoLocalPendente =
+          serializar(valorLocal) !== baseAnteriorSerializada;
+        const valorAplicado =
+          novo.chave === "financeiro-cedep-lancamentos" &&
+          temAlteracaoLocalPendente
+            ? mesclarAlteracoesLocaisPendentes(baseAnterior, valorLocal, novo.valor)
+            : novo.valor;
+
         salvarValorLocal(
           novo.chave,
-          novo.valor
+          valorAplicado
         );
         conhecidos.set(
           novo.chave,
@@ -542,7 +597,7 @@ export function iniciarSincronizacaoAutomatica(
             {
               detail: {
                 chave: novo.chave,
-                valor: novo.valor,
+                valor: valorAplicado,
               },
             }
           )
