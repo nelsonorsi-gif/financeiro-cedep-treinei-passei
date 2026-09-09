@@ -124,6 +124,27 @@ const mesclarAlteracoesLocaisPendentes = (
   if (chave === "financeiro-cedep-lancamentos") {
     return mesclarListaPendente(baseAnterior, valorLocal, valorRemoto);
   }
+  if (chave === "financeiro-cedep-configuracoes-contratos") {
+    if (
+      !baseAnterior || typeof baseAnterior !== "object" ||
+      !valorLocal || typeof valorLocal !== "object" ||
+      !valorRemoto || typeof valorRemoto !== "object"
+    ) {
+      return valorRemoto;
+    }
+    const base = baseAnterior as Record<string, unknown>;
+    const local = valorLocal as Record<string, unknown>;
+    const resultado = { ...(valorRemoto as Record<string, unknown>) };
+    Object.entries(local).forEach(([alunoId, contrato]) => {
+      if (!(alunoId in base) || serializar(base[alunoId]) !== serializar(contrato)) {
+        resultado[alunoId] = contrato;
+      }
+    });
+    Object.keys(base).forEach((alunoId) => {
+      if (!(alunoId in local)) delete resultado[alunoId];
+    });
+    return resultado;
+  }
   if (
     !baseAnterior || typeof baseAnterior !== "object" ||
     !valorLocal || typeof valorLocal !== "object" ||
@@ -148,6 +169,7 @@ const CHAVES_COM_MESCLAGEM = new Set<string>([
   "financeiro-cedep-academico",
   "financeiro-cedep-professores",
   "financeiro-cedep-secretaria",
+  "financeiro-cedep-configuracoes-contratos",
 ]);
 
 const calcularRemocoes = (
@@ -158,6 +180,15 @@ const calcularRemocoes = (
   if (!anteriorSerializado) return {};
   try {
     const anterior = JSON.parse(anteriorSerializado) as unknown;
+    if (chave === "financeiro-cedep-configuracoes-contratos") {
+      const antes = anterior && typeof anterior === "object"
+        ? anterior as Record<string, unknown>
+        : {};
+      const depois = valorAtual && typeof valorAtual === "object"
+        ? valorAtual as Record<string, unknown>
+        : {};
+      return { registros: Object.keys(antes).filter((alunoId) => !(alunoId in depois)) };
+    }
     const campos = chave === "financeiro-cedep-lancamentos"
       ? ["itens"]
       : CAMPOS_MESCLAGEM[chave] ?? [];
@@ -173,6 +204,24 @@ const calcularRemocoes = (
     }));
   } catch {
     return {};
+  }
+};
+
+const calcularAlteracoesContrato = (
+  anteriorSerializado: string | undefined,
+  valorAtual: unknown
+) => {
+  const atual = valorAtual && typeof valorAtual === "object"
+    ? valorAtual as Record<string, unknown>
+    : {};
+  if (!anteriorSerializado) return atual;
+  try {
+    const anterior = JSON.parse(anteriorSerializado) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(atual).filter(([alunoId, contrato]) =>
+      !(alunoId in anterior) || serializar(anterior[alunoId]) !== serializar(contrato)
+    ));
+  } catch {
+    return atual;
   }
 };
 
@@ -485,7 +534,9 @@ export function iniciarSincronizacaoAutomatica(
           return [
             {
               chave,
-              valor,
+              valor: chave === "financeiro-cedep-configuracoes-contratos"
+                ? calcularAlteracoesContrato(anterior, valor)
+                : valor,
               updated_by:
                 usuarioId,
               updated_at:

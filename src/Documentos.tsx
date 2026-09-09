@@ -25,6 +25,7 @@ import {
   type RegistroContrato,
 } from "./servicos/contratos";
 import { sincronizarContasLocais } from "./servicos/contasEstruturadas";
+import { salvarChaveCompartilhada } from "./servicos/sincronizacaoAutomatica";
 import type {
   Curso,
 } from "./CatalogoCursos";
@@ -795,7 +796,7 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
     };
 
   const salvarConfiguracaoContrato =
-    (
+    async (
       mostrarMensagem = true
     ) => {
       if (!alunoContrato) {
@@ -840,10 +841,12 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
             },
           ],
         };
-        localStorage.setItem(
+        const confirmadas = await salvarChaveCompartilhada(
           CHAVE_CONFIGURACOES_CONTRATOS,
-          JSON.stringify(salvas)
+          { [alunoContrato]: salvas[alunoContrato] },
+          usuarioAtual.id
         );
+        localStorage.setItem(CHAVE_CONFIGURACOES_CONTRATOS, JSON.stringify(confirmadas));
         setVersaoContratos((versao) => versao + 1);
         if (mostrarMensagem) {
           alert(
@@ -1400,7 +1403,7 @@ function Documentos({ usuarioAtual }: { usuarioAtual: import("./Acesso").Usuario
         localStorage.setItem(CHAVE_CONTAS, JSON.stringify(contasAtualizadas));
         setContas(contasAtualizadas);
         window.dispatchEvent(new Event("financeiro-contas-atualizadas"));
-        if (!salvarConfiguracaoContrato(false)) throw new Error("Não foi possível salvar os dados do contrato.");
+        if (!(await salvarConfiguracaoContrato(false))) throw new Error("Não foi possível salvar os dados do contrato.");
         setMensagemContrato("Contrato e parcelas salvos no banco com sucesso.");
       } catch (erro) {
         const erroBanco = erro as {
