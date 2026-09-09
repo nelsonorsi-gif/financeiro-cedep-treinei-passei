@@ -1924,6 +1924,74 @@ function App() {
     );
   };
 
+  const estornarMovimentoDaSecretaria = (
+    movimento: import("./servicos/caixaOperacional").MovimentoCaixa,
+    motivo: string,
+    estornoMovimentoId: string
+  ) => {
+    if (!usuarioAtual) return;
+    const original = lancamentos.find((item) =>
+      item.movimentoCaixaId === movimento.id ||
+      item.id === `secretaria-${movimento.origemId}`
+    );
+    if (!original || original.estornadoEm || original.estornoDeId) return;
+    const agora = new Date().toISOString();
+    const estorno: Lancamento = {
+      ...original,
+      id: `estorno-${original.id}-${Date.now()}`,
+      descricao: `Estorno: ${original.descricao}`,
+      entrada: original.saida,
+      saida: original.entrada,
+      tipoEntrada: original.saida > 0 ? "Estorno de saída" : "",
+      tipoSaida: original.entrada > 0 ? "Estorno de entrada" : "",
+      estornoDeId: original.id,
+      motivoEstorno: motivo,
+      usuarioResponsavelId: usuarioAtual.id,
+      usuarioResponsavelNome: usuarioAtual.nome,
+      caixaId: original.caixaId,
+      movimentoCaixaId: estornoMovimentoId,
+    };
+    const taxaOriginal = lancamentos.find(
+      (item) => item.id === `taxa-cartao-${movimento.origemId}` && !item.estornadoEm
+    );
+    const estornoTaxa: Lancamento | null = taxaOriginal
+      ? {
+          ...taxaOriginal,
+          id: `estorno-${taxaOriginal.id}-${Date.now()}`,
+          descricao: "Estorno: Taxa de cartão",
+          entrada: taxaOriginal.saida,
+          saida: 0,
+          tipoEntrada: "Estorno de taxa de cartão",
+          tipoSaida: "",
+          estornoDeId: taxaOriginal.id,
+          motivoEstorno: motivo,
+          usuarioResponsavelId: usuarioAtual.id,
+          usuarioResponsavelNome: usuarioAtual.nome,
+          caixaId: original.caixaId,
+          movimentoCaixaId: estornoMovimentoId,
+        }
+      : null;
+    setLancamentos((atuais) => [
+      ...atuais.map((item) =>
+        item.id === original.id || item.id === taxaOriginal?.id
+          ? { ...item, estornadoEm: agora }
+          : item
+      ),
+      estorno,
+      ...(estornoTaxa ? [estornoTaxa] : []),
+    ]);
+  };
+
+  const excluirMovimentoDaSecretaria = (
+    movimento: import("./servicos/caixaOperacional").MovimentoCaixa
+  ) => {
+    setLancamentos((atuais) => atuais.filter((item) =>
+      item.movimentoCaixaId !== movimento.id &&
+      item.id !== `secretaria-${movimento.origemId}` &&
+      item.id !== `taxa-cartao-${movimento.origemId}`
+    ));
+  };
+
   const estornarContaFinanceira = (conta: Conta, valor: number, motivo: string) => {
     if (!usuarioAtual) return;
     const data = hojeISO();
@@ -3267,6 +3335,8 @@ function App() {
             onRegistrarReceita={
               registrarReceitaSecretaria
             }
+            onEstornarMovimento={estornarMovimentoDaSecretaria}
+            onExcluirMovimento={excluirMovimentoDaSecretaria}
           />
         )}
 

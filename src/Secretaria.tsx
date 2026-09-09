@@ -71,6 +71,8 @@ type Props = {
   onRegistrarReceita: (
     recebimento: RecebimentoCaixa
   ) => void;
+  onEstornarMovimento: (movimento: MovimentoCaixa, motivo: string, estornoId: string) => void;
+  onExcluirMovimento: (movimento: MovimentoCaixa) => void;
 };
 
 export const CHAVE_SECRETARIA =
@@ -148,6 +150,8 @@ const normalizarSessoes = (sessoes: SessaoCaixa[]) =>
 function Secretaria({
   usuarioAtual,
   onRegistrarReceita,
+  onEstornarMovimento,
+  onExcluirMovimento,
 }: Props) {
   const [sessoes, setSessoes] =
     useState<SessaoCaixa[]>([]);
@@ -277,7 +281,14 @@ function Secretaria({
     sessoes.find(
       (item) =>
         item.status === "Aberto" &&
-        (item.operadorId === usuarioAtual.id || (!item.operadorId && item.operador === usuarioAtual.nome))
+        (
+          usuarioAtual.perfil === "Administrador"
+            ? Boolean(item.reaberturas?.some((reabertura) => reabertura.usuarioId === usuarioAtual.id))
+            : (
+                !(item.historicoFechamentos?.length) &&
+                (item.operadorId === usuarioAtual.id || (!item.operadorId && item.operador === usuarioAtual.nome))
+              )
+        )
     ) ?? null;
 
   const caixaVisualizado =
@@ -451,12 +462,8 @@ function Secretaria({
   };
 
   const reabrirCaixa = (sessao: SessaoCaixa) => {
-    const pertenceAoUsuario =
-      sessao.operadorId === usuarioAtual.id ||
-      (!sessao.operadorId && sessao.operador === usuarioAtual.nome);
-
-    if (!pertenceAoUsuario) {
-      alert("Somente o operador responsável pode reabrir este caixa.");
+    if (usuarioAtual.perfil !== "Administrador") {
+      alert("Somente o Administrador pode reabrir e alterar um caixa já fechado.");
       return;
     }
     if (caixaAberto) {
@@ -504,6 +511,10 @@ function Secretaria({
 
   const editarMovimento = (movimento: MovimentoCaixa) => {
     if (!caixaAberto) return;
+    if (usuarioAtual.perfil !== "Administrador" && caixaAberto.historicoFechamentos?.length) {
+      alert("Este caixa já foi fechado. Somente o Administrador pode alterá-lo.");
+      return;
+    }
     const motivo = window.prompt("Informe o motivo da edição:")?.trim();
     if (!motivo) return;
     const novaDescricao = window.prompt("Descrição:", movimento.descricao)?.trim();
@@ -558,6 +569,97 @@ function Secretaria({
       )
     );
     alert("Movimento atualizado e alteração registrada no histórico.");
+  };
+
+  const podeAlterarMovimentos =
+    Boolean(
+      caixaVisualizado &&
+      caixaAberto?.id === caixaVisualizado.id &&
+      (
+        usuarioAtual.perfil === "Administrador" ||
+        (
+          !(caixaVisualizado.historicoFechamentos?.length) &&
+          (
+            caixaVisualizado.operadorId === usuarioAtual.id ||
+            (!caixaVisualizado.operadorId && caixaVisualizado.operador === usuarioAtual.nome)
+          )
+        )
+      )
+    );
+
+  const estornarMovimento = (movimento: MovimentoCaixa) => {
+    if (!caixaVisualizado || !podeAlterarMovimentos) {
+      alert("Este caixa não permite alterações. Após o fechamento, somente o Administrador pode movimentá-lo.");
+      return;
+    }
+    if (movimento.natureza.startsWith("estorno")) {
+      alert("Não é possível estornar um registro de estorno.");
+      return;
+    }
+    if ((caixaVisualizado.movimentos ?? []).some((item) => item.estornoDeId === movimento.id)) {
+      alert("Este movimento já foi estornado.");
+      return;
+    }
+    const motivo = window.prompt("Informe o motivo obrigatório do estorno:")?.trim();
+    if (!motivo) return;
+    const estorno: MovimentoCaixa = {
+      ...movimento,
+      id: `estorno-caixa-${movimento.id}-${Date.now()}`,
+      natureza:
+        movimento.natureza === "entrada" || movimento.natureza === "estorno_saida"
+          ? "estorno_entrada"
+          : "estorno_saida",
+      origem: "estorno",
+      descricao: `Estorno: ${movimento.descricao}`,
+      dataHora: new Date().toISOString(),
+      usuarioId: usuarioAtual.id,
+      usuarioNome: usuarioAtual.nome,
+      estornoDeId: movimento.id,
+      motivoEstorno: motivo,
+    };
+    setSessoes((atuais) => atuais.map((sessao) =>
+      sessao.id === caixaVisualizado.id
+        ? {
+            ...sessao,
+            alteradoAposReabertura:
+              Boolean(sessao.historicoFechamentos?.length) || sessao.alteradoAposReabertura,
+            movimentos: [...(sessao.movimentos ?? []), estorno],
+          }
+        : sessao
+    ));
+    onEstornarMovimento(movimento, motivo, estorno.id);
+    alert("Estorno registrado no caixa e no financeiro.");
+  };
+
+  const excluirMovimento = (movimento: MovimentoCaixa) => {
+    if (!caixaVisualizado || !podeAlterarMovimentos) {
+      alert("Este caixa não permite alterações. Após o fechamento, somente o Administrador pode movimentá-lo.");
+      return;
+    }
+    if (movimento.origem !== "secretaria") {
+      alert("Movimentos vinculados a mensalidades ou contas devem ser estornados para preservar a sincronização.");
+      return;
+    }
+    if ((caixaVisualizado.movimentos ?? []).some((item) => item.estornoDeId === movimento.id)) {
+      alert("Este movimento possui estorno e não pode ser excluído.");
+      return;
+    }
+    if (!window.confirm(`Excluir definitivamente o lançamento "${movimento.descricao}"? Use esta opção somente para lançamentos feitos por engano.`)) {
+      return;
+    }
+    setSessoes((atuais) => atuais.map((sessao) =>
+      sessao.id === caixaVisualizado.id
+        ? {
+            ...sessao,
+            alteradoAposReabertura:
+              Boolean(sessao.historicoFechamentos?.length) || sessao.alteradoAposReabertura,
+            recebimentos: (sessao.recebimentos ?? []).filter((item) => item.id !== movimento.origemId),
+            movimentos: (sessao.movimentos ?? []).filter((item) => item.id !== movimento.id),
+          }
+        : sessao
+    ));
+    onExcluirMovimento(movimento);
+    alert("Lançamento excluído do caixa e do financeiro.");
   };
 
   const imprimirRelatorioCaixa = () => {
@@ -1016,7 +1118,7 @@ function Secretaria({
                     <th style={estilos.th}>Entrada</th>
                     <th style={estilos.th}>Saída</th>
                     <th style={estilos.th}>Unidade</th>
-                    {caixaAberto?.id === caixaVisualizado.id && <th style={estilos.th}>Ações</th>}
+                    {podeAlterarMovimentos && <th style={estilos.th}>Ações</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1052,11 +1154,17 @@ function Secretaria({
                             {!entrada ? moeda(movimento.valor) : ""}
                           </td>
                           <td style={estilos.td}>{caixaVisualizado.unidade}</td>
-                          {caixaAberto?.id === caixaVisualizado.id && (
+                          {podeAlterarMovimentos && (
                             <td style={estilos.td}>
-                              <button style={estilos.botaoSecundario} onClick={() => editarMovimento(movimento)}>
-                                Editar
-                              </button>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                <button style={estilos.botaoSecundario} onClick={() => editarMovimento(movimento)}>Editar</button>
+                                {!movimento.natureza.startsWith("estorno") && (
+                                  <button style={estilos.botaoAlerta} onClick={() => estornarMovimento(movimento)}>Estornar</button>
+                                )}
+                                {movimento.origem === "secretaria" && (
+                                  <button style={estilos.botaoVermelho} onClick={() => excluirMovimento(movimento)}>Excluir</button>
+                                )}
+                              </div>
                             </td>
                           )}
                         </tr>
@@ -1207,7 +1315,7 @@ function Secretaria({
                     >
                       Ver movimentação
                     </button>
-                    {item.status === "Fechado" && (
+                    {item.status === "Fechado" && usuarioAtual.perfil === "Administrador" && (
                       <button
                         style={estilos.botaoAlerta}
                         onClick={() => reabrirCaixa(item)}

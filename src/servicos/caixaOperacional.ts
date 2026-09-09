@@ -91,6 +91,7 @@ export const obterCaixaAbertoDoUsuario = (usuario: UsuarioSessao) => {
   return carregar().sessoes.find(
     (sessao) =>
       sessao.status === "Aberto" &&
+      !(sessao.historicoFechamentos?.length) &&
       (sessao.operadorId === usuario.id ||
         (!sessao.operadorId && sessao.operador === usuario.nome))
   ) ?? null;
