@@ -289,9 +289,6 @@ export async function prepararSincronizacaoInicial(
 ) {
   const cliente =
     clienteObrigatorio();
-  const marcador =
-    `erp-sync-inicial-${usuarioId}`;
-
   const contasNuvem =
     await carregarContasEstruturadas();
   if (contasNuvem) {
@@ -299,14 +296,6 @@ export async function prepararSincronizacaoInicial(
       "financeiro-cedep-contas",
       contasNuvem
     );
-  }
-
-  if (
-    sessionStorage.getItem(
-      marcador
-    ) === "ok"
-  ) {
-    return false;
   }
 
   const { data, error } =
@@ -373,10 +362,6 @@ export async function prepararSincronizacaoInicial(
       );
     }
 
-    sessionStorage.setItem(
-      marcador,
-      "ok"
-    );
     return false;
   }
 
@@ -404,10 +389,6 @@ export async function prepararSincronizacaoInicial(
     }
   );
 
-  sessionStorage.setItem(
-    marcador,
-    "ok"
-  );
   localStorage.setItem(
     "financeiro-cedep-ultima-sincronizacao",
     new Date().toLocaleString(
