@@ -78,7 +78,14 @@ type ItemComId = {
   [campo: string]: unknown;
 };
 
-const mesclarAlteracoesLocaisPendentes = (
+const CAMPOS_MESCLAGEM: Record<string, string[]> = {
+  "financeiro-cedep-cadastros": ["alunos", "parceiros"],
+  "financeiro-cedep-academico": ["turmas", "matriculas", "presencas"],
+  "financeiro-cedep-professores": ["professores", "lancamentos"],
+  "financeiro-cedep-secretaria": ["sessoes"],
+};
+
+const mesclarListaPendente = (
   baseAnterior: unknown,
   valorLocal: unknown,
   valorRemoto: unknown
@@ -108,11 +115,66 @@ const mesclarAlteracoesLocaisPendentes = (
   return Array.from(resultado.values());
 };
 
+const mesclarAlteracoesLocaisPendentes = (
+  chave: string,
+  baseAnterior: unknown,
+  valorLocal: unknown,
+  valorRemoto: unknown
+) => {
+  if (chave === "financeiro-cedep-lancamentos") {
+    return mesclarListaPendente(baseAnterior, valorLocal, valorRemoto);
+  }
+  if (
+    !baseAnterior || typeof baseAnterior !== "object" ||
+    !valorLocal || typeof valorLocal !== "object" ||
+    !valorRemoto || typeof valorRemoto !== "object"
+  ) {
+    return valorRemoto;
+  }
+  const resultado = { ...(valorRemoto as Record<string, unknown>) };
+  CAMPOS_MESCLAGEM[chave]?.forEach((campo) => {
+    resultado[campo] = mesclarListaPendente(
+      (baseAnterior as Record<string, unknown>)[campo],
+      (valorLocal as Record<string, unknown>)[campo],
+      (valorRemoto as Record<string, unknown>)[campo]
+    );
+  });
+  return resultado;
+};
+
 const CHAVES_COM_MESCLAGEM = new Set<string>([
   "financeiro-cedep-lancamentos",
   "financeiro-cedep-cadastros",
   "financeiro-cedep-academico",
+  "financeiro-cedep-professores",
+  "financeiro-cedep-secretaria",
 ]);
+
+const calcularRemocoes = (
+  chave: string,
+  anteriorSerializado: string | undefined,
+  valorAtual: unknown
+) => {
+  if (!anteriorSerializado) return {};
+  try {
+    const anterior = JSON.parse(anteriorSerializado) as unknown;
+    const campos = chave === "financeiro-cedep-lancamentos"
+      ? ["itens"]
+      : CAMPOS_MESCLAGEM[chave] ?? [];
+    return Object.fromEntries(campos.map((campo) => {
+      const antes = campo === "itens" ? anterior : (anterior as Record<string, unknown>)?.[campo];
+      const depois = campo === "itens" ? valorAtual : (valorAtual as Record<string, unknown>)?.[campo];
+      const idsDepois = new Set(
+        (Array.isArray(depois) ? depois : []).map((item: ItemComId) => item.id).filter(Boolean)
+      );
+      return [campo, (Array.isArray(antes) ? antes : [])
+        .map((item: ItemComId) => item.id)
+        .filter((id): id is string => Boolean(id) && !idsDepois.has(id))];
+    }));
+  } catch {
+    return {};
+  }
+};
 
 const salvarValorLocal = (
   chave: string,
@@ -435,17 +497,9 @@ export function iniciarSincronizacaoAutomatica(
 
           const anterior = conhecidos.get(chave);
 
-          let remocoes: Record<string, string[]> = {};
-          if (chave === "financeiro-cedep-lancamentos" && anterior) {
-            try {
-              const antes = JSON.parse(anterior) as Array<{ id?: string }>;
-              const depois = Array.isArray(valor) ? valor as Array<{ id?: string }> : [];
-              const idsDepois = new Set(depois.map((item) => item.id).filter(Boolean));
-              remocoes = { itens: antes.map((item) => item.id).filter((id): id is string => Boolean(id) && !idsDepois.has(id)) };
-            } catch {
-              remocoes = {};
-            }
-          }
+          const remocoes = CHAVES_COM_MESCLAGEM.has(chave)
+            ? calcularRemocoes(chave, anterior, valor)
+            : {};
 
           return [
             {
@@ -569,9 +623,9 @@ export function iniciarSincronizacaoAutomatica(
         const temAlteracaoLocalPendente =
           serializar(valorLocal) !== baseAnteriorSerializada;
         const valorAplicado =
-          novo.chave === "financeiro-cedep-lancamentos" &&
+          CHAVES_COM_MESCLAGEM.has(novo.chave) &&
           temAlteracaoLocalPendente
-            ? mesclarAlteracoesLocaisPendentes(baseAnterior, valorLocal, novo.valor)
+            ? mesclarAlteracoesLocaisPendentes(novo.chave, baseAnterior, valorLocal, novo.valor)
             : novo.valor;
 
         salvarValorLocal(

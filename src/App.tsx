@@ -3284,7 +3284,9 @@ function App() {
 
               <div style={estilos.resumoFiltrosFinanceiros}>
                 <Card titulo="Receitas encontradas" valor={String(receitasFiltradas.length)} />
-                <Card titulo="Total das receitas" valor={moeda(totalReceitasFiltradas)} corValor="#2563eb" />
+                {usuarioAtual.perfil !== "Secretaria" && (
+                  <Card titulo="Total das receitas" valor={moeda(totalReceitasFiltradas)} corValor="#2563eb" />
+                )}
               </div>
 
               {receitasFiltradas.length ===
@@ -3387,7 +3389,9 @@ function App() {
 
               <div style={estilos.resumoFiltrosFinanceiros}>
                 <Card titulo="Despesas encontradas" valor={String(despesasFiltradas.length)} />
-                <Card titulo="Total das despesas" valor={moeda(totalDespesasFiltradas)} corValor="#dc2626" />
+                {usuarioAtual.perfil !== "Secretaria" && (
+                  <Card titulo="Total das despesas" valor={moeda(totalDespesasFiltradas)} corValor="#dc2626" />
+                )}
               </div>
 
               {despesasFiltradas.length ===
