@@ -292,6 +292,60 @@ function Relatorios({
     totalEntradas -
     totalSaidas;
 
+  const resumoTiposEntrada = useMemo(() => {
+    const totais = new Map<string, { valor: number; quantidade: number }>();
+    filtrados.filter((item) => item.entrada > 0).forEach((item) => {
+      const tipo = item.tipoEntrada.trim() || "Sem tipo informado";
+      const atual = totais.get(tipo) ?? { valor: 0, quantidade: 0 };
+      atual.valor += item.entrada;
+      atual.quantidade += 1;
+      totais.set(tipo, atual);
+    });
+    return Array.from(totais.entries())
+      .map(([nome, valores]) => ({ nome, ...valores }))
+      .sort((a, b) => b.valor - a.valor);
+  }, [filtrados]);
+
+  const resumoTiposSaida = useMemo(() => {
+    const totais = new Map<string, { valor: number; quantidade: number }>();
+    filtrados.filter((item) => item.saida > 0).forEach((item) => {
+      const tipo = item.tipoSaida.trim() || "Sem tipo informado";
+      const atual = totais.get(tipo) ?? { valor: 0, quantidade: 0 };
+      atual.valor += item.saida;
+      atual.quantidade += 1;
+      totais.set(tipo, atual);
+    });
+    return Array.from(totais.entries())
+      .map(([nome, valores]) => ({ nome, ...valores }))
+      .sort((a, b) => b.valor - a.valor);
+  }, [filtrados]);
+
+  const taxasCartaoPorDia = useMemo(() => {
+    const totais = new Map<string, {
+      data: string;
+      unidade: string;
+      quantidade: number;
+      valor: number;
+    }>();
+    filtrados
+      .filter((item) =>
+        item.saida > 0 &&
+        item.tipoSaida.trim().toLocaleLowerCase("pt-BR").includes("taxas de cartão")
+      )
+      .forEach((item) => {
+        const data = item.data || item.dia || "Sem data";
+        const unidade = item.unidade.trim() || "Sem unidade";
+        const chave = `${data}|${unidade}`;
+        const atual = totais.get(chave) ?? { data, unidade, quantidade: 0, valor: 0 };
+        atual.quantidade += 1;
+        atual.valor += item.saida;
+        totais.set(chave, atual);
+      });
+    return Array.from(totais.values()).sort((a, b) =>
+      b.data.localeCompare(a.data) || a.unidade.localeCompare(b.unidade, "pt-BR")
+    );
+  }, [filtrados]);
+
   const totalPaginas =
     Math.max(
       1,
@@ -838,6 +892,65 @@ function Relatorios({
             Limpar filtros
           </button>
         </div>
+      </section>
+
+      <section style={{ ...estilos.caixa, marginTop: 25 }}>
+        <h2>Entradas e saídas agrupadas</h2>
+        <p style={estilos.textoCinza}>
+          Os agrupamentos abaixo seguem todos os filtros selecionados.
+        </p>
+        <div style={estilos.gradeAgrupamentos}>
+          <ResumoAgrupado
+            titulo="Entradas por tipo"
+            itens={resumoTiposEntrada}
+            total={totalEntradas}
+            cor="#2563eb"
+            moeda={moeda}
+          />
+          <ResumoAgrupado
+            titulo="Saídas por tipo"
+            itens={resumoTiposSaida}
+            total={totalSaidas}
+            cor="#dc2626"
+            moeda={moeda}
+          />
+        </div>
+        {taxasCartaoPorDia.length > 0 && (
+          <div style={{ ...estilos.blocoAgrupado, marginTop: 20 }}>
+            <h3 style={{ marginTop: 0 }}>Taxas de cartão consolidadas por dia</h3>
+            <p style={estilos.textoCinza}>
+              Uma linha por data e unidade, sem identificar o nome de cada recebimento.
+            </p>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ ...estilos.tabela, minWidth: 620 }}>
+                <thead>
+                  <tr>
+                    <th style={estilos.th}>Data</th>
+                    <th style={estilos.th}>Descrição</th>
+                    <th style={estilos.th}>Unidade</th>
+                    <th style={estilos.th}>Recebimentos</th>
+                    <th style={estilos.th}>Total das taxas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {taxasCartaoPorDia.map((item) => (
+                    <tr key={`${item.data}-${item.unidade}`}>
+                      <td style={estilos.td}>
+                        {item.data.includes("-") ? formatarDataTela(item.data) : item.data}
+                      </td>
+                      <td style={estilos.td}>Taxas de cartão do dia</td>
+                      <td style={estilos.td}>{item.unidade}</td>
+                      <td style={estilos.td}>{item.quantidade}</td>
+                      <td style={{ ...estilos.td, color: "#dc2626", fontWeight: 800 }}>
+                        {moeda(item.valor)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* INDICAÇÃO DO FILTRO */}
@@ -1391,6 +1504,57 @@ function CampoData({
   );
 }
 
+function ResumoAgrupado({
+  titulo,
+  itens,
+  total,
+  cor,
+  moeda,
+}: {
+  titulo: string;
+  itens: { nome: string; valor: number; quantidade: number }[];
+  total: number;
+  cor: string;
+  moeda: (valor: number) => string;
+}) {
+  return (
+    <div style={estilos.blocoAgrupado}>
+      <h3 style={{ marginTop: 0 }}>{titulo}</h3>
+      {itens.length === 0 ? (
+        <div style={estilos.vazio}>Nenhum valor encontrado.</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ ...estilos.tabela, minWidth: 480 }}>
+            <thead>
+              <tr>
+                <th style={estilos.th}>Tipo</th>
+                <th style={estilos.th}>Lançamentos</th>
+                <th style={estilos.th}>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.map((item) => (
+                <tr key={item.nome}>
+                  <td style={estilos.td}>{item.nome}</td>
+                  <td style={estilos.td}>{item.quantidade}</td>
+                  <td style={{ ...estilos.td, color: cor, fontWeight: 700 }}>
+                    {moeda(item.valor)}
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td style={estilos.td}><strong>Total</strong></td>
+                <td style={estilos.td}><strong>{itens.reduce((soma, item) => soma + item.quantidade, 0)}</strong></td>
+                <td style={{ ...estilos.td, color: cor, fontWeight: 800 }}>{moeda(total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* =========================================================
    ESTILOS
 ========================================================= */
@@ -1442,6 +1606,20 @@ const estilos: Record<
 
     boxShadow:
       "0 6px 18px rgba(0,0,0,.06)",
+  },
+
+  gradeAgrupamentos: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,420px),1fr))",
+    gap: 20,
+    marginTop: 20,
+  },
+
+  blocoAgrupado: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 12,
+    padding: 18,
+    minWidth: 0,
   },
 
   filtros: {

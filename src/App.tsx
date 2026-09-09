@@ -954,6 +954,25 @@ function App() {
     saldoDashboard -
     despesasPessoaisDashboard;
 
+  const resumoUnidadesDashboard =
+    useMemo(() => {
+      const totais = new Map<string, { entradas: number; saidas: number }>();
+      lancamentosDashboard.forEach((item) => {
+        const unidade = item.unidade?.trim() || "Sem unidade";
+        const atual = totais.get(unidade) ?? { entradas: 0, saidas: 0 };
+        atual.entradas += item.entrada;
+        atual.saidas += item.saida;
+        totais.set(unidade, atual);
+      });
+      return Array.from(totais.entries())
+        .map(([unidade, valores]) => ({
+          unidade,
+          ...valores,
+          saldo: valores.entradas - valores.saidas,
+        }))
+        .sort((a, b) => a.unidade.localeCompare(b.unidade, "pt-BR"));
+    }, [lancamentosDashboard]);
+
   const fluxoDashboard =
     useMemo<PontoFluxo[]>(() => {
       const pontos = new Map<
@@ -2959,6 +2978,45 @@ function App() {
                   }
                 />
               </div>
+            </section>
+
+            <section style={{ ...estilos.caixa, marginTop: 22 }}>
+              <h2>Resumo por unidade</h2>
+              <p style={estilos.textoCinza}>
+                Valores calculados conforme a competência selecionada no Dashboard.
+              </p>
+              {resumoUnidadesDashboard.length === 0 ? (
+                <div style={estilos.vazio}>Nenhuma movimentação encontrada.</div>
+              ) : (
+                <div style={{ overflowX: "auto", marginTop: 18 }}>
+                  <table style={{ width: "100%", minWidth: 650, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr>
+                        <th style={estilos.th}>Unidade</th>
+                        <th style={estilos.th}>Entradas</th>
+                        <th style={estilos.th}>Saídas</th>
+                        <th style={estilos.th}>Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resumoUnidadesDashboard.map((item) => (
+                        <tr key={item.unidade}>
+                          <td style={estilos.td}><strong>{item.unidade}</strong></td>
+                          <td style={{ ...estilos.td, color: "#2563eb" }}>
+                            {valoresDashboardOcultos ? "••••••" : moeda(item.entradas)}
+                          </td>
+                          <td style={{ ...estilos.td, color: "#dc2626" }}>
+                            {valoresDashboardOcultos ? "••••••" : moeda(item.saidas)}
+                          </td>
+                          <td style={{ ...estilos.td, color: item.saldo >= 0 ? "#2563eb" : "#dc2626", fontWeight: 700 }}>
+                            {valoresDashboardOcultos ? "••••••" : moeda(item.saldo)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
 
             <section
