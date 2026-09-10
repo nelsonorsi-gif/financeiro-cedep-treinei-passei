@@ -9,7 +9,7 @@ import {
 
 import * as XLSX from "xlsx";
 
-import Contas, { type Conta } from "./Contas";
+import Contas, { CHAVE_CONTAS, type Conta } from "./Contas";
 import Relatorios from "./Relatorios";
 import Cadastros from "./Cadastros";
 import Professores, {
@@ -49,6 +49,11 @@ import {
 } from "./servicos/sincronizacaoAutomatica";
 import { mensagemCaixaFechado, registrarMovimentoCaixa, usuarioPodeMovimentar } from "./servicos/caixaOperacional";
 import { calcularTaxaCartao } from "./servicos/taxasCartao";
+import {
+  carregarContasEstruturadas,
+  registrarEstornoBaixaEstruturada,
+  salvarContaEstruturada,
+} from "./servicos/contasEstruturadas";
 
 import Configuracoes, {
   carregarConfiguracoes,
@@ -1924,7 +1929,7 @@ function App() {
     );
   };
 
-  const estornarMovimentoDaSecretaria = (
+  const estornarMovimentoDaSecretaria = async (
     movimento: import("./servicos/caixaOperacional").MovimentoCaixa,
     motivo: string,
     estornoMovimentoId: string
@@ -1935,6 +1940,40 @@ function App() {
       item.id === `secretaria-${movimento.origemId}`
     );
     if (!original || original.estornadoEm || original.estornoDeId) return;
+
+    if (original.contaId) {
+      const contasBanco = await carregarContasEstruturadas();
+      const contasAtuais = contasBanco ?? JSON.parse(localStorage.getItem(CHAVE_CONTAS) ?? "[]");
+      const conta = contasAtuais.find((item: Conta) => item.id === original.contaId);
+      if (!conta) {
+        throw new Error("A conta vinculada a este recebimento não foi encontrada.");
+      }
+
+      const valorEstornado = Math.max(original.entrada, original.saida);
+      const valorPago = Math.max(0, (conta.valorPago ?? 0) - valorEstornado);
+      const contaAtualizada: Conta = {
+        ...conta,
+        valorPago,
+        status: valorPago > 0 ? "Parcial" : "Pendente",
+        dataBaixa: valorPago > 0 ? conta.dataBaixa : undefined,
+        atualizadoPorId: usuarioAtual.id,
+        atualizadoEm: new Date().toISOString(),
+      };
+
+      await registrarEstornoBaixaEstruturada({
+        contaId: conta.id,
+        usuarioId: usuarioAtual.id,
+        motivo,
+      });
+      await salvarContaEstruturada(contaAtualizada, usuarioAtual.id);
+
+      const contasAtualizadas = contasAtuais.map((item: Conta) =>
+        item.id === contaAtualizada.id ? contaAtualizada : item
+      );
+      localStorage.setItem(CHAVE_CONTAS, JSON.stringify(contasAtualizadas));
+      window.dispatchEvent(new Event("financeiro-contas-atualizadas"));
+    }
+
     const agora = new Date().toISOString();
     const estorno: Lancamento = {
       ...original,
