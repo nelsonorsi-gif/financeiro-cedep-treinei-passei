@@ -71,7 +71,7 @@ type Props = {
   onRegistrarReceita: (
     recebimento: RecebimentoCaixa
   ) => void;
-  onEstornarMovimento: (movimento: MovimentoCaixa, motivo: string, estornoId: string) => void;
+  onEstornarMovimento: (movimento: MovimentoCaixa, motivo: string, estornoId: string) => Promise<void>;
   onExcluirMovimento: (movimento: MovimentoCaixa) => void;
 };
 
@@ -587,7 +587,7 @@ function Secretaria({
       )
     );
 
-  const estornarMovimento = (movimento: MovimentoCaixa) => {
+  const estornarMovimento = async (movimento: MovimentoCaixa) => {
     if (!caixaVisualizado || !podeAlterarMovimentos) {
       alert("Este caixa não permite alterações. Após o fechamento, somente o Administrador pode movimentá-lo.");
       return;
@@ -617,6 +617,16 @@ function Secretaria({
       estornoDeId: movimento.id,
       motivoEstorno: motivo,
     };
+    try {
+      await onEstornarMovimento(movimento, motivo, estorno.id);
+    } catch (erro) {
+      const detalhe = erro instanceof Error ? erro.message : "Erro desconhecido.";
+      alert(
+        "Não foi possível concluir o estorno no banco. " +
+        detalhe
+      );
+      return;
+    }
     setSessoes((atuais) => atuais.map((sessao) =>
       sessao.id === caixaVisualizado.id
         ? {
@@ -627,8 +637,7 @@ function Secretaria({
           }
         : sessao
     ));
-    onEstornarMovimento(movimento, motivo, estorno.id);
-    alert("Estorno registrado no caixa e no financeiro.");
+    alert("Estorno registrado no caixa, no financeiro e em Contas a Receber.");
   };
 
   const excluirMovimento = (movimento: MovimentoCaixa) => {
