@@ -255,27 +255,71 @@ export default function CompromissosMensais({
       unidade: escopo === "Pessoal" ? "" : unidade.trim() || configuracoes.unidades[0] || "CEDEP",
       atualizado_em: new Date().toISOString(),
     };
-    const { error } = compromissoEditando
+    const resultado = compromissoEditando
       ? await supabase
           .from("compromissos_recorrentes")
           .update(dados)
           .eq("id", compromissoEditando)
-      : await supabase.from("compromissos_recorrentes").insert({
-          ...dados,
-          inicio: primeiroDia(competencia),
-          ativo: true,
-          criado_por: usuarioAtual.id,
-        });
-    if (error) {
-      alert(error.message);
+          .select("*")
+          .single()
+      : await supabase
+          .from("compromissos_recorrentes")
+          .insert({
+            ...dados,
+            inicio: primeiroDia(competencia),
+            ativo: true,
+            criado_por: usuarioAtual.id,
+          })
+          .select("*")
+          .single();
+    if (resultado.error) {
+      alert(resultado.error.message);
       return;
     }
+
+    const compromissoSalvo = resultado.data as Compromisso;
+    if (!estavaEditando && compromissoSalvo.escopo === "Pessoal") {
+      const { error: erroOcorrencia } = await supabase
+        .from("ocorrencias_mensais")
+        .upsert(
+          {
+            compromisso_id: compromissoSalvo.id,
+            competencia: primeiroDia(competencia),
+            descricao: compromissoSalvo.descricao,
+            escopo: compromissoSalvo.escopo,
+            beneficiario: compromissoSalvo.beneficiario,
+            categoria: compromissoSalvo.categoria,
+            valor_previsto: compromissoSalvo.valor_padrao,
+            vencimento: vencimentoDoMes(
+              competencia,
+              compromissoSalvo.dia_vencimento
+            ),
+            banco: compromissoSalvo.banco,
+            unidade: "",
+            criado_por: usuarioAtual.id,
+          },
+          {
+            onConflict: "compromisso_id,competencia",
+            ignoreDuplicates: true,
+          }
+        );
+      if (erroOcorrencia) {
+        alert(
+          "O compromisso foi salvo, mas a despesa pessoal do mês não foi criada: " +
+          erroOcorrencia.message
+        );
+        return;
+      }
+    }
+
     limparFormulario();
     await carregar();
     alert(
       estavaEditando
-        ? "Compromisso recorrente atualizado. A altera\u00e7\u00e3o valer\u00e1 para as pr\u00f3ximas listas geradas."
-        : "Compromisso mensal salvo."
+        ? "Compromisso recorrente atualizado. A alteração valerá para as próximas listas geradas."
+        : compromissoSalvo.escopo === "Pessoal"
+          ? "Compromisso salvo e despesa pessoal do mês criada."
+          : "Compromisso mensal salvo."
     );
   };
 
