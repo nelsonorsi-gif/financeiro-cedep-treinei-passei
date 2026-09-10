@@ -874,12 +874,20 @@ function App() {
      TOTAIS
   ======================================================= */
 
+  const lancamentosFinanceiros =
+    useMemo(
+      () => lancamentos.filter(
+        (item) => !item.estornadoEm && !item.estornoDeId
+      ),
+      [lancamentos]
+    );
+
   const competenciasDashboard =
     useMemo(() => {
       const valores = Array.from(
         new Set(
           [
-            ...lancamentos.map((item) => item.competencia.trim()),
+            ...lancamentosFinanceiros.map((item) => item.competencia.trim()),
             ...despesasPessoais.map((item) => item.competencia.trim()),
           ].filter(Boolean)
         )
@@ -907,8 +915,8 @@ function App() {
       () =>
         competenciaDashboard ===
         "Todas"
-          ? lancamentos
-          : lancamentos.filter(
+          ? lancamentosFinanceiros
+          : lancamentosFinanceiros.filter(
               (item) =>
                 item.competencia ===
                 competenciaDashboard
@@ -1081,7 +1089,7 @@ function App() {
     useMemo(() => {
       const lista = Array.from(
         new Set([
-          ...lancamentos.map((item) => item.competencia.trim()),
+          ...lancamentosFinanceiros.map((item) => item.competencia.trim()),
           ...despesasPessoais.map((item) => item.competencia.trim()),
         ].filter(Boolean))
       );
@@ -1098,7 +1106,7 @@ function App() {
         Array.from(
           new Set([
             ...configuracoes.unidades.map(normalizarUnidade),
-            ...lancamentos.map((item) => normalizarUnidade(item.unidade || "")),
+            ...lancamentosFinanceiros.map((item) => normalizarUnidade(item.unidade || "")),
           ].filter(Boolean))
         ).sort((a, b) => a.localeCompare(b, "pt-BR")),
       [configuracoes.unidades, lancamentos]
@@ -1107,7 +1115,7 @@ function App() {
   const lancamentosBancos =
     useMemo(
       () =>
-        lancamentos.filter((item) => {
+        lancamentosFinanceiros.filter((item) => {
           const correspondeCompetencia =
             competenciaBancos === "Todas" ||
             item.competencia === competenciaBancos;
@@ -2432,13 +2440,13 @@ function App() {
   ]);
 
   const receitas =
-    lancamentos.filter(
+    lancamentosFinanceiros.filter(
       (item) =>
         item.entrada > 0
     );
 
   const despesas =
-    lancamentos.filter(
+    lancamentosFinanceiros.filter(
       (item) =>
         item.saida > 0
     );
@@ -2473,10 +2481,10 @@ function App() {
     0
   );
   const unidadesFinanceiras = normalizarListaUnidades(
-    lancamentos.map((item) => item.unidade).filter(Boolean)
+    lancamentosFinanceiros.map((item) => item.unidade).filter(Boolean)
   );
   const pagamentosFinanceiros = Array.from(
-    new Set(lancamentos.map((item) => item.formaPagamento).filter(Boolean))
+    new Set(lancamentosFinanceiros.map((item) => item.formaPagamento).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const modulosDoSistema = [
@@ -4121,7 +4129,7 @@ function App() {
           "Relatórios" && (
           <Relatorios
             lancamentos={
-              lancamentos
+              lancamentosFinanceiros
             }
           />
         )}
