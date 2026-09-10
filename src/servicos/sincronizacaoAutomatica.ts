@@ -83,6 +83,7 @@ const CAMPOS_MESCLAGEM: Record<string, string[]> = {
   "financeiro-cedep-academico": ["turmas", "matriculas", "presencas"],
   "financeiro-cedep-professores": ["professores", "lancamentos"],
   "financeiro-cedep-secretaria": ["sessoes"],
+  "financeiro-cedep-escolas": ["escolas", "lancamentos"],
 };
 
 const mesclarListaPendente = (
@@ -121,7 +122,10 @@ const mesclarAlteracoesLocaisPendentes = (
   valorLocal: unknown,
   valorRemoto: unknown
 ) => {
-  if (chave === "financeiro-cedep-lancamentos") {
+  if (
+    chave === "financeiro-cedep-lancamentos" ||
+    chave === "financeiro-cedep-despesas-pessoais"
+  ) {
     return mesclarListaPendente(baseAnterior, valorLocal, valorRemoto);
   }
   if (chave === "financeiro-cedep-configuracoes-contratos") {
@@ -170,6 +174,8 @@ const CHAVES_COM_MESCLAGEM = new Set<string>([
   "financeiro-cedep-professores",
   "financeiro-cedep-secretaria",
   "financeiro-cedep-configuracoes-contratos",
+  "financeiro-cedep-despesas-pessoais",
+  "financeiro-cedep-escolas",
 ]);
 
 const calcularRemocoes = (
@@ -189,7 +195,8 @@ const calcularRemocoes = (
         : {};
       return { registros: Object.keys(antes).filter((alunoId) => !(alunoId in depois)) };
     }
-    const campos = chave === "financeiro-cedep-lancamentos"
+    const campos = chave === "financeiro-cedep-lancamentos" ||
+      chave === "financeiro-cedep-despesas-pessoais"
       ? ["itens"]
       : CAMPOS_MESCLAGEM[chave] ?? [];
     return Object.fromEntries(campos.map((campo) => {
