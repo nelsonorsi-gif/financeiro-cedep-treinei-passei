@@ -282,6 +282,60 @@ export default function CompromissosMensais({
     }
 
     const compromissoSalvo = resultado.data as Compromisso;
+
+    if (estavaEditando) {
+      const competenciaAtualSelecionada = primeiroDia(competencia);
+      const { data: ocorrenciaAtual, error: erroConsultaOcorrencia } = await supabase
+        .from("ocorrencias_mensais")
+        .select("id,valor_pago,status")
+        .eq("compromisso_id", compromissoSalvo.id)
+        .eq("competencia", competenciaAtualSelecionada)
+        .maybeSingle();
+
+      if (erroConsultaOcorrencia) {
+        alert("O valor padrão foi salvo, mas não foi possível atualizar a lista deste mês: " + erroConsultaOcorrencia.message);
+        return;
+      }
+
+      if (
+        ocorrenciaAtual &&
+        ocorrenciaAtual.status !== "Pago" &&
+        ocorrenciaAtual.status !== "Dispensado"
+      ) {
+        const valorAtualizado = Math.max(
+          Number(compromissoSalvo.valor_padrao),
+          Number(ocorrenciaAtual.valor_pago || 0)
+        );
+        const { error: erroAtualizacaoOcorrencia } = await supabase
+          .from("ocorrencias_mensais")
+          .update({
+            valor_previsto: valorAtualizado,
+            atualizado_em: new Date().toISOString(),
+          })
+          .eq("id", ocorrenciaAtual.id);
+
+        if (erroAtualizacaoOcorrencia) {
+          alert("O valor padrão foi salvo, mas não foi possível atualizar a lista deste mês: " + erroAtualizacaoOcorrencia.message);
+          return;
+        }
+
+        if (compromissoSalvo.escopo === "Empresarial") {
+          const { error: erroAtualizacaoConta } = await supabase
+            .from("contas_financeiras")
+            .update({
+              valor_original: valorAtualizado,
+              atualizado_por: usuarioAtual.id,
+            })
+            .eq("id", `recorrente-${ocorrenciaAtual.id}`);
+
+          if (erroAtualizacaoConta) {
+            alert("A lista mensal foi atualizada, mas não foi possível atualizar Contas a Pagar: " + erroAtualizacaoConta.message);
+            return;
+          }
+        }
+      }
+    }
+
     if (!estavaEditando && compromissoSalvo.escopo === "Pessoal") {
       const { error: erroOcorrencia } = await supabase
         .from("ocorrencias_mensais")
@@ -320,7 +374,7 @@ export default function CompromissosMensais({
     await carregar();
     alert(
       estavaEditando
-        ? "Compromisso recorrente atualizado. A alteração valerá para as próximas listas geradas."
+        ? "Compromisso recorrente atualizado. O novo valor foi mantido na lista atual pendente e será usado nos próximos meses."
         : compromissoSalvo.escopo === "Pessoal"
           ? "Compromisso salvo e despesa pessoal do mês criada."
           : "Compromisso mensal salvo."
@@ -470,12 +524,14 @@ export default function CompromissosMensais({
       return;
     }
     const formaSelecionada = formaPagamentoBaixa.trim();
-    const totalPago = Math.min(item.valor_previsto, item.valor_pago + pagamento);
-    const concluido = totalPago >= item.valor_previsto;
+    const totalPago = item.valor_pago + pagamento;
+    const valorPrevistoAtualizado = Math.max(item.valor_previsto, totalPago);
+    const concluido = totalPago >= valorPrevistoAtualizado;
     const dataPagamento = new Date().toISOString().slice(0, 10);
     const { error } = await supabase
       .from("ocorrencias_mensais")
       .update({
+        valor_previsto: valorPrevistoAtualizado,
         valor_pago: totalPago,
         status: concluido ? "Pago" : "Parcial",
         data_pagamento: dataPagamento,
@@ -492,6 +548,7 @@ export default function CompromissosMensais({
       await supabase
         .from("contas_financeiras")
         .update({
+          valor_original: valorPrevistoAtualizado,
           valor_pago: totalPago,
           status: concluido ? "Pago" : "Parcial",
           data_baixa: concluido ? dataPagamento : null,
