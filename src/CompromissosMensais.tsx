@@ -96,10 +96,14 @@ export default function CompromissosMensais({
   usuarioAtual,
   onRegistrarPagamento,
   onAbrirContasPagar,
+  ocorrenciaInicialId,
+  onConsumirOcorrenciaInicial,
 }: {
   usuarioAtual: UsuarioSessao;
   onRegistrarPagamento: (pagamento: PagamentoCompromisso) => void;
   onAbrirContasPagar?: () => void;
+  ocorrenciaInicialId?: string | null;
+  onConsumirOcorrenciaInicial?: () => void;
 }) {
   const [compromissos, setCompromissos] = useState<Compromisso[]>([]);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
@@ -436,6 +440,16 @@ export default function CompromissosMensais({
     setValorPagamento(String(item.valor_previsto - item.valor_pago).replace(".", ","));
     setFormaPagamentoBaixa(item.banco || "");
   };
+
+  useEffect(() => {
+    if (!ocorrenciaInicialId) return;
+    const item = ocorrencias.find((ocorrencia) => ocorrencia.id === ocorrenciaInicialId);
+    if (!item || item.status === "Pago" || item.status === "Dispensado") return;
+    setPagamentoEmAndamento(item);
+    setValorPagamento(String(item.valor_previsto - item.valor_pago).replace(".", ","));
+    setFormaPagamentoBaixa(item.banco || "");
+    onConsumirOcorrenciaInicial?.();
+  }, [ocorrenciaInicialId, ocorrencias, onConsumirOcorrenciaInicial]);
 
   const fecharPagamento = () => {
     setPagamentoEmAndamento(null);
