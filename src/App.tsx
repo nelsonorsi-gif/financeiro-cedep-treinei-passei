@@ -2102,9 +2102,23 @@ function App() {
         conta.dataBaixa ||
         hojeISO();
 
+      const contaRecorrente =
+        conta.tipo === "pagar" &&
+        conta.id.startsWith("recorrente-");
+      const ocorrenciaRecorrenteId =
+        contaRecorrente
+          ? conta.id.slice("recorrente-".length)
+          : "";
+      const valorLancamento =
+        contaRecorrente
+          ? conta.valorPago ?? conta.valor
+          : conta.valor;
+
       const novoLancamento: Lancamento =
         {
-          id: `baixa-${conta.id}-${Date.now()}`,
+          id: contaRecorrente
+            ? `recorrente-pagamento-${ocorrenciaRecorrenteId}`
+            : `baixa-${conta.id}-${Date.now()}`,
 
           dia:
             diaDaData(
@@ -2151,13 +2165,13 @@ function App() {
           entrada:
             conta.tipo ===
             "receber"
-              ? conta.valor
+              ? valorLancamento
               : 0,
 
           saida:
             conta.tipo ===
             "pagar"
-              ? conta.valor
+              ? valorLancamento
               : 0,
 
           unidade:
@@ -2187,7 +2201,21 @@ function App() {
           usuarioResponsavelNome: usuarioAtual?.nome,
         });
       }
-      setLancamentos((atuais) => [...atuais, ...lancamentosNovos]);
+      setLancamentos((atuais) =>
+        lancamentosNovos.reduce(
+          (resultado, lancamento) => {
+            const existente = resultado.some(
+              (item) => item.id === lancamento.id
+            );
+            return existente
+              ? resultado.map((item) =>
+                  item.id === lancamento.id ? lancamento : item
+                )
+              : [...resultado, lancamento];
+          },
+          atuais
+        )
+      );
     };
 
   const registrarReceitaSecretaria =
