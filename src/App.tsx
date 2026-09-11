@@ -717,6 +717,77 @@ function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!carregado) return;
+
+    let ativo = true;
+    const conciliarRecebimentos = async () => {
+      try {
+        const contas = await carregarContasEstruturadas();
+        if (!ativo || !contas) return;
+
+        const recebidas = contas.filter(
+          (conta) =>
+            conta.tipo === "receber" &&
+            Boolean(conta.dataBaixa) &&
+            Number(conta.valorPago ?? 0) > 0 &&
+            ["Pago", "Recebido", "Parcial"].includes(conta.status)
+        );
+
+        setLancamentos((atuais) => {
+          const reconciliados = [...atuais];
+
+          recebidas.forEach((conta) => {
+            const valorRecebido = Number(conta.valorPago ?? 0);
+            const dataBaixa = conta.dataBaixa as string;
+            const descricaoNormalizada = conta.descricao.trim().toLocaleLowerCase("pt-BR");
+            const jaExiste = reconciliados.some(
+              (lancamento) =>
+                lancamento.contaId === conta.id ||
+                (
+                  lancamento.entrada === valorRecebido &&
+                  lancamento.data === dataBaixa &&
+                  lancamento.descricao.trim().toLocaleLowerCase("pt-BR") === descricaoNormalizada &&
+                  !lancamento.estornoDeId
+                )
+            );
+
+            if (jaExiste) return;
+            reconciliados.push({
+              id: `baixa-${conta.id}`,
+              dia: diaDaData(dataBaixa),
+              data: dataBaixa,
+              competencia: competenciaDaData(dataBaixa),
+              descricao: conta.descricao,
+              tipoEntrada: conta.categoria || "Conta Recebida",
+              tipoSaida: "",
+              formaPagamento: conta.formaPagamentoBaixa || conta.banco,
+              entrada: valorRecebido,
+              saida: 0,
+              unidade: conta.unidade,
+              origem: "manual",
+              contaId: conta.id,
+              parcelasCartao: conta.parcelasCartao,
+              taxaCartao: conta.taxaCartao,
+              valorLiquidoCartao: conta.valorLiquidoCartao,
+            });
+          });
+
+          return reconciliados.length === atuais.length ? atuais : reconciliados;
+        });
+      } catch (erro) {
+        console.error("Não foi possível conciliar Contas a Receber com Receitas:", erro);
+      }
+    };
+
+    void conciliarRecebimentos();
+    window.addEventListener("financeiro-contas-atualizadas", conciliarRecebimentos);
+    return () => {
+      ativo = false;
+      window.removeEventListener("financeiro-contas-atualizadas", conciliarRecebimentos);
+    };
+  }, [carregado]);
+
   /* =======================================================
      SALVAMENTO AUTOMÁTICO
   ======================================================= */
@@ -2119,7 +2190,7 @@ function App() {
         {
           id: contaRecorrente
             ? `recorrente-pagamento-${ocorrenciaRecorrenteId}`
-            : `baixa-${conta.id}-${Date.now()}`,
+            : `baixa-${conta.id}`,
 
           dia:
             diaDaData(
