@@ -949,8 +949,7 @@ function App() {
     despesasPessoais
       .filter(
         (item) =>
-          item.status !==
-            "Dispensado" &&
+          Number(item.valorPago) > 0 &&
           (competenciaDashboard ===
             "Todas" ||
             item.competencia ===
@@ -959,7 +958,7 @@ function App() {
       .reduce(
         (total, item) =>
           total +
-          Number(item.valorPrevisto),
+          Number(item.valorPago),
         0
       );
 
@@ -3036,7 +3035,7 @@ function App() {
               />
 
               <Card
-                titulo="Despesas pessoais"
+                titulo="Despesas pessoais pagas"
                 valor={
                   valoresDashboardOcultos
                     ? "••••••"
@@ -3103,7 +3102,7 @@ function App() {
                 />
 
                 <Resumo
-                  nome="Despesas pessoais"
+                  nome="Despesas pessoais pagas"
                   valor={
                     valoresDashboardOcultos
                       ? "••••••"
