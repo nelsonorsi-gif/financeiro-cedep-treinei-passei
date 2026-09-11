@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { podeAcessar, type UsuarioSessao } from "./Acesso";
+import { supabase } from "./lib/supabase";
 import {
   EVENTO_NOTIFICACOES,
   atualizarEstadoNotificacao,
@@ -13,6 +14,17 @@ type Props = {
   modulos: string[];
   onAbrir: (modulo: string) => void;
   onQuantidadeAlterada?: (quantidade: number) => void;
+  onAbrirContaPagar?: (contaId: string) => void;
+  onAbrirDespesaPessoal?: (ocorrenciaId: string) => void;
+};
+
+type ContaDoDia = {
+  id: string;
+  origem: "Empresarial" | "Pessoal";
+  descricao: string;
+  valorPendente: number;
+  formaPagamento: string;
+  unidade: string;
 };
 type Filtro = "todas" | "nao_lidas" | PrioridadeNotificacao;
 
@@ -44,9 +56,13 @@ const formatarData = (valor: string) => {
 
 export default function Inicio({
   usuario, modulos, onAbrir, onQuantidadeAlterada,
+  onAbrirContaPagar, onAbrirDespesaPessoal,
 }: Props) {
   const [versao, setVersao] = useState(0);
   const [filtro, setFiltro] = useState<Filtro>("todas");
+  const [contasDoDia, setContasDoDia] = useState<ContaDoDia[]>([]);
+  const [carregandoContas, setCarregandoContas] = useState(false);
+  const [erroContas, setErroContas] = useState("");
 
   useEffect(() => {
     const atualizar = () => setVersao((atual) => atual + 1);
@@ -63,6 +79,84 @@ export default function Inicio({
       window.removeEventListener("financeiro-caixa-atualizado", atualizar);
     };
   }, []);
+
+
+
+  useEffect(() => {
+    if (usuario.perfil !== "Administrador" || !supabase) {
+      setContasDoDia([]);
+      return;
+    }
+
+    let ativo = true;
+    const data = new Date();
+    const hoje = [
+      data.getFullYear(),
+      String(data.getMonth() + 1).padStart(2, "0"),
+      String(data.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    const carregarContasDoDia = async () => {
+      setCarregandoContas(true);
+      setErroContas("");
+      const [empresariais, pessoais] = await Promise.all([
+        supabase
+          .from("contas_financeiras")
+          .select("id,descricao,valor_original,valor_pago,banco,unidade,status")
+          .eq("tipo", "pagar")
+          .eq("vencimento", hoje)
+          .in("status", ["Pendente", "Parcial"]),
+        supabase
+          .from("ocorrencias_mensais")
+          .select("id,descricao,valor_previsto,valor_pago,banco,unidade,status")
+          .eq("escopo", "Pessoal")
+          .eq("vencimento", hoje)
+          .in("status", ["Pendente", "Parcial"]),
+      ]);
+
+      if (!ativo) return;
+      if (empresariais.error || pessoais.error) {
+        setErroContas(empresariais.error?.message || pessoais.error?.message || "Não foi possível consultar os vencimentos.");
+        setCarregandoContas(false);
+        return;
+      }
+
+      const itensEmpresariais: ContaDoDia[] = (empresariais.data || []).map((item) => ({
+        id: String(item.id),
+        origem: "Empresarial",
+        descricao: String(item.descricao || "Conta empresarial"),
+        valorPendente: Math.max(0, Number(item.valor_original || 0) - Number(item.valor_pago || 0)),
+        formaPagamento: String(item.banco || ""),
+        unidade: String(item.unidade || ""),
+      }));
+      const itensPessoais: ContaDoDia[] = (pessoais.data || []).map((item) => ({
+        id: String(item.id),
+        origem: "Pessoal",
+        descricao: String(item.descricao || "Despesa pessoal"),
+        valorPendente: Math.max(0, Number(item.valor_previsto || 0) - Number(item.valor_pago || 0)),
+        formaPagamento: String(item.banco || ""),
+        unidade: "Pessoal",
+      }));
+
+      setContasDoDia([...itensEmpresariais, ...itensPessoais]
+        .filter((item) => item.valorPendente > 0)
+        .sort((primeira, segunda) => primeira.descricao.localeCompare(segunda.descricao, "pt-BR")));
+      setCarregandoContas(false);
+    };
+
+    void carregarContasDoDia();
+    const intervalo = window.setInterval(() => void carregarContasDoDia(), 30_000);
+    window.addEventListener("focus", carregarContasDoDia);
+    window.addEventListener("financeiro-contas-atualizadas", carregarContasDoDia);
+    window.addEventListener("financeiro-despesas-pessoais-atualizadas", carregarContasDoDia);
+    return () => {
+      ativo = false;
+      window.clearInterval(intervalo);
+      window.removeEventListener("focus", carregarContasDoDia);
+      window.removeEventListener("financeiro-contas-atualizadas", carregarContasDoDia);
+      window.removeEventListener("financeiro-despesas-pessoais-atualizadas", carregarContasDoDia);
+    };
+  }, [usuario.perfil]);
 
   const todas = useMemo(() => notificacoesComEstado(usuario), [usuario, versao]);
   const ativas = useMemo(
@@ -121,6 +215,53 @@ export default function Inicio({
           <span>🔔</span><strong>{naoLidas}</strong><small>não lidas</small>
         </div>
       </section>
+
+
+      {usuario.perfil === "Administrador" && (
+        <section style={estilos.vencimentos}>
+          <div style={estilos.topo}>
+            <div>
+              <h2 style={estilos.subtitulo}>Vencimentos de hoje</h2>
+              <p style={estilos.legenda}>Somente contas pendentes. Ao confirmar a baixa, o lembrete sai automaticamente.</p>
+            </div>
+            <span style={estilos.contadorVencimentos}>{contasDoDia.length} pendente(s)</span>
+          </div>
+
+          {carregandoContas && contasDoDia.length === 0 ? (
+            <div style={estilos.vazio}>Consultando contas de hoje...</div>
+          ) : erroContas ? (
+            <div style={estilos.erroVencimentos}>{erroContas}</div>
+          ) : contasDoDia.length === 0 ? (
+            <div style={estilos.semAvisos}>✅ Nenhuma conta pendente vence hoje.</div>
+          ) : (
+            <div style={estilos.listaVencimentos}>
+              {contasDoDia.map((conta) => (
+                <article key={conta.origem + "-" + conta.id} style={estilos.contaDoDia}>
+                  <div style={estilos.dadosConta}>
+                    <span style={{ ...estilos.tipoConta, ...(conta.origem === "Pessoal" ? estilos.tipoPessoal : estilos.tipoEmpresarial) }}>
+                      {conta.origem}
+                    </span>
+                    <strong>{conta.descricao}</strong>
+                    <small style={estilos.data}>{[conta.formaPagamento, conta.unidade].filter(Boolean).join(" • ")}</small>
+                  </div>
+                  <strong style={estilos.valorVencimento}>
+                    {conta.valorPendente.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </strong>
+                  <button
+                    type="button"
+                    style={estilos.botaoBaixar}
+                    onClick={() => conta.origem === "Pessoal"
+                      ? onAbrirDespesaPessoal?.(conta.id)
+                      : onAbrirContaPagar?.(conta.id)}
+                  >
+                    Dar baixa
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <section style={estilos.central}>
         <div style={estilos.topo}>
@@ -231,6 +372,17 @@ const estilos: Record<string, CSSProperties> = {
   titulo: { margin: "8px 0", fontSize: 30 },
   texto: { margin: 0, color: "#dfe8f5", lineHeight: 1.5 },
   sino: { minWidth: 105, padding: 13, display: "grid", placeItems: "center", borderRadius: 16, background: "rgba(255,255,255,.12)", fontSize: 20 },
+  vencimentos: { padding: 22, borderRadius: 16, background: "white", border: "1px solid #f4c86a", boxShadow: "0 8px 24px rgba(16,26,45,.08)" },
+  contadorVencimentos: { padding: "8px 12px", borderRadius: 999, background: "#fff7e0", color: "#854d0e", fontWeight: 800 },
+  listaVencimentos: { display: "grid", gap: 10, marginTop: 18 },
+  contaDoDia: { display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", alignItems: "center", gap: 16, padding: 14, borderRadius: 11, border: "1px solid #e2e8f0", background: "#f8fafc" },
+  dadosConta: { minWidth: 0, display: "grid", gap: 5 },
+  tipoConta: { width: "fit-content", padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 900 },
+  tipoEmpresarial: { color: "#1e40af", background: "#dbeafe" },
+  tipoPessoal: { color: "#7e22ce", background: "#f3e8ff" },
+  valorVencimento: { whiteSpace: "nowrap", color: "#b91c1c", fontSize: 17 },
+  botaoBaixar: { border: 0, borderRadius: 8, padding: "10px 14px", background: "#15803d", color: "white", cursor: "pointer", fontWeight: 800 },
+  erroVencimentos: { marginTop: 16, padding: 14, borderRadius: 10, background: "#fff1f2", border: "1px solid #fecdd3", color: "#991b1b" },
   central: { padding: 22, borderRadius: 16, background: "white", border: "1px solid #dce3ed", boxShadow: "0 8px 24px rgba(16,26,45,.08)" },
   topo: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, flexWrap: "wrap" },
   subtitulo: { margin: "0 0 7px", color: "#15233d", fontSize: 21 },
