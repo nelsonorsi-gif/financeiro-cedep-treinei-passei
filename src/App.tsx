@@ -353,6 +353,8 @@ function App() {
   ] = useState("Dashboard");
   const [contaReceberInicialId, setContaReceberInicialId] =
     useState<string | null>(null);
+  const [contaPagarInicialId, setContaPagarInicialId] = useState<string | null>(null);
+  const [ocorrenciaInicialId, setOcorrenciaInicialId] = useState<string | null>(null);
 
   const [
     menuMobileAberto,
@@ -2854,6 +2856,14 @@ function App() {
             modulos={modulosDoSistema}
             onAbrir={setPagina}
             onQuantidadeAlterada={setQuantidadeNotificacoes}
+            onAbrirContaPagar={(contaId) => {
+              setContaPagarInicialId(contaId);
+              setPagina("Contas a Pagar");
+            }}
+            onAbrirDespesaPessoal={(ocorrenciaId) => {
+              setOcorrenciaInicialId(ocorrenciaId);
+              setPagina("Compromissos Mensais");
+            }}
           />
         )}
 
@@ -3651,6 +3661,8 @@ function App() {
           "Contas a Pagar" && (
           <Contas
             tipo="pagar"
+            contaInicialId={contaPagarInicialId}
+            onConsumirContaInicial={() => setContaPagarInicialId(null)}
 
             onBaixar={
               baixarContaFinanceira
@@ -4173,6 +4185,8 @@ function App() {
             onAbrirContasPagar={() =>
               setPagina("Contas a Pagar")
             }
+            ocorrenciaInicialId={ocorrenciaInicialId}
+            onConsumirOcorrenciaInicial={() => setOcorrenciaInicialId(null)}
           />
         )}
 
