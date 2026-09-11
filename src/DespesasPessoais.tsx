@@ -165,7 +165,15 @@ export default function DespesasPessoais() {
     return despesas
       .filter((item) => item.vencimento?.slice(0, 7) === mes)
       .filter((item) => !termo || `${item.descricao} ${item.categoria || ""} ${item.formaPagamento || ""}`.toLocaleLowerCase("pt-BR").includes(termo))
-      .toSorted((a, b) => a.vencimento.localeCompare(b.vencimento));
+      .toSorted((a, b) => {
+        const ordemStatus = (status: DespesaPessoal["status"]) =>
+          status === "Pago" ? 1 : status === "Dispensado" ? 2 : 0;
+        const diferencaStatus =
+          ordemStatus(a.status) - ordemStatus(b.status);
+        return diferencaStatus !== 0
+          ? diferencaStatus
+          : a.vencimento.localeCompare(b.vencimento);
+      });
   }, [busca, despesas, mes]);
 
   const total = filtradas.filter((item) => item.status !== "Dispensado").reduce((soma, item) => soma + Number(item.valorPrevisto), 0);
