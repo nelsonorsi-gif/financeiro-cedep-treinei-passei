@@ -83,7 +83,8 @@ export default function Inicio({
 
 
   useEffect(() => {
-    if (usuario.perfil !== "Administrador" || !supabase) {
+    const cliente = supabase;
+    if (usuario.perfil !== "Administrador" || !cliente) {
       setContasDoDia([]);
       return;
     }
@@ -100,13 +101,13 @@ export default function Inicio({
       setCarregandoContas(true);
       setErroContas("");
       const [empresariais, pessoais] = await Promise.all([
-        supabase
+        cliente
           .from("contas_financeiras")
           .select("id,descricao,valor_original,valor_pago,banco,unidade,status")
           .eq("tipo", "pagar")
           .eq("vencimento", hoje)
           .in("status", ["Pendente", "Parcial"]),
-        supabase
+        cliente
           .from("ocorrencias_mensais")
           .select("id,descricao,valor_previsto,valor_pago,banco,unidade,status")
           .eq("escopo", "Pessoal")
