@@ -30,6 +30,7 @@ type Compromisso = {
   inicio: string;
   fim: string | null;
   ativo: boolean;
+  numero_parcelas: number | null;
 };
 
 type Ocorrencia = {
@@ -70,6 +71,12 @@ const moeda = (valor: number) =>
 const competenciaAtual = () => new Date().toISOString().slice(0, 7);
 
 const primeiroDia = (competencia: string) => `${competencia}-01`;
+
+const numeroDaParcela = (inicio: string, competencia: string) => {
+  const [anoInicio, mesInicio] = inicio.slice(0, 7).split("-").map(Number);
+  const [anoCompetencia, mesCompetencia] = competencia.slice(0, 7).split("-").map(Number);
+  return (anoCompetencia - anoInicio) * 12 + (mesCompetencia - mesInicio) + 1;
+};
 
 const vencimentoDoMes = (competencia: string, dia: number) => {
   const [ano, mes] = competencia.split("-").map(Number);
@@ -114,6 +121,7 @@ export default function CompromissosMensais({
   const [categoria, setCategoria] = useState("");
   const [valor, setValor] = useState("");
   const [dia, setDia] = useState("10");
+  const [numeroParcelas, setNumeroParcelas] = useState("");
   const [banco, setBanco] = useState("");
   const [pagamentoEmAndamento, setPagamentoEmAndamento] = useState<Ocorrencia | null>(null);
   const [valorPagamento, setValorPagamento] = useState("");
@@ -232,6 +240,7 @@ export default function CompromissosMensais({
     setCategoria("");
     setValor("");
     setDia("10");
+    setNumeroParcelas("");
     setBanco("");
     setUnidade(configuracoes.unidades[0] || "CEDEP");
     setCompromissoEditando(null);
@@ -239,8 +248,13 @@ export default function CompromissosMensais({
 
   const salvarCompromisso = async () => {
     const valorNumerico = Number(valor.replace(",", "."));
+    const quantidadeParcelas = numeroParcelas.trim() ? Number(numeroParcelas) : null;
     if (!supabase || !descricao.trim() || valorNumerico <= 0) {
       alert("Informe descri\u00e7\u00e3o e valor v\u00e1lido.");
+      return;
+    }
+    if (quantidadeParcelas !== null && (!Number.isInteger(quantidadeParcelas) || quantidadeParcelas <= 0)) {
+      alert("O número de parcelas deve ser um número inteiro maior que zero ou ficar em branco.");
       return;
     }
     if (escopo === "Pessoal" && (!categoria.trim() || !banco.trim())) {
@@ -255,6 +269,7 @@ export default function CompromissosMensais({
       categoria: categoria.trim(),
       valor_padrao: valorNumerico,
       dia_vencimento: Math.max(1, Math.min(31, Number(dia))),
+      numero_parcelas: quantidadeParcelas,
       banco: banco.trim(),
       unidade: escopo === "Pessoal" ? "" : unidade.trim() || configuracoes.unidades[0] || "CEDEP",
       atualizado_em: new Date().toISOString(),
@@ -389,6 +404,7 @@ export default function CompromissosMensais({
     setCategoria(item.categoria);
     setValor(String(item.valor_padrao).replace(".", ","));
     setDia(String(item.dia_vencimento));
+    setNumeroParcelas(item.numero_parcelas ? String(item.numero_parcelas) : "");
     setBanco(item.banco);
     setUnidade(item.unidade || configuracoes.unidades[0] || "CEDEP");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -421,7 +437,8 @@ export default function CompromissosMensais({
       (item) =>
         item.ativo &&
         item.inicio <= inicio &&
-        (!item.fim || item.fim >= inicio)
+        (!item.fim || item.fim >= inicio) &&
+        (!item.numero_parcelas || numeroDaParcela(item.inicio, inicio) <= item.numero_parcelas)
     );
     if (!ativos.length) {
       alert("Não há compromissos ativos para este mês.");
@@ -438,6 +455,9 @@ export default function CompromissosMensais({
       vencimento: vencimentoDoMes(competencia, item.dia_vencimento),
       banco: item.banco,
       unidade: item.unidade,
+      observacao: item.numero_parcelas
+        ? `Parcela ${numeroDaParcela(item.inicio, inicio)}/${item.numero_parcelas}`
+        : "",
       criado_por: usuarioAtual.id,
     }));
     const { data, error } = await supabase
@@ -463,7 +483,9 @@ export default function CompromissosMensais({
           categoria: item.categoria || "Compromisso mensal",
           banco: item.banco,
           unidade: item.unidade,
-          observacao: `Gerado automaticamente para ${competencia}`,
+          observacao: item.observacao
+            ? `${item.observacao}. Gerado automaticamente para ${competencia}`
+            : `Gerado automaticamente para ${competencia}`,
           status: "Pendente",
           origem: "recorrencia",
           criado_por: usuarioAtual.id,
@@ -680,6 +702,7 @@ export default function CompromissosMensais({
           )}
           <Campo label="Valor padrão" value={valor} onChange={setValor} placeholder="Ex.: 1.500,00" />
           <Campo label="Dia do vencimento" type="number" value={dia} onChange={setDia} />
+          <Campo label="Número de parcelas (opcional)" type="number" value={numeroParcelas} onChange={setNumeroParcelas} placeholder="Ex.: 12" />
           {escopo === "Pessoal" ? (
             <CampoComLista label="Forma de pagamento" value={banco} onChange={setBanco} opcoes={Array.from(new Set([...pagamentosPessoaisPadrao, ...configuracoes.bancos, ...pagamentosPessoais]))} listaId="pagamentos-pessoais-compromissos" placeholder="Digite ou selecione" />
           ) : (
@@ -714,6 +737,7 @@ export default function CompromissosMensais({
                 <strong>{item.descricao}</strong>
                 <div style={estilos.textoCinza}>
                   {item.escopo} • dia {item.dia_vencimento} • {moeda(Number(item.valor_padrao))}
+                  {item.numero_parcelas ? ` • ${item.numero_parcelas} parcela(s)` : " • sem limite"}
                   {item.beneficiario ? ` • ${item.beneficiario}` : ""}
                 </div>
               </div>
@@ -772,7 +796,7 @@ export default function CompromissosMensais({
               {filtradas.map((item) => (
                 <tr key={item.id}>
                   <td style={estilos.td}>{item.vencimento.split("-").reverse().join("/")}</td>
-                  <td style={estilos.td}><strong>{item.descricao}</strong><div>{item.beneficiario}</div></td>
+                  <td style={estilos.td}><strong>{item.descricao}</strong><div>{item.beneficiario}</div>{(() => { const modelo = compromissos.find((compromisso) => compromisso.id === item.compromisso_id); return modelo?.numero_parcelas ? <small style={estilos.parcela}>Parcela {numeroDaParcela(modelo.inicio, item.competencia)}/{modelo.numero_parcelas}</small> : null; })()}</td>
                   <td style={estilos.td}>{item.escopo}</td>
                   <td style={estilos.td}>{moeda(Number(item.valor_previsto))}</td>
                   <td style={estilos.td}>{moeda(Number(item.valor_pago))}</td>
@@ -872,6 +896,7 @@ const estilos: Record<string, CSSProperties> = {
   th: { background: "#101a2d", color: "white", padding: 12, textAlign: "left" },
   td: { padding: 12, borderBottom: "1px solid #e2e8f0" },
   status: { display: "inline-block", padding: "6px 9px", borderRadius: 20, background: "#eef2ff", fontWeight: 700 },
+  parcela: { display: "block", width: "fit-content", marginTop: 5, padding: "3px 7px", borderRadius: 999, background: "#fff7e0", color: "#854d0e", fontWeight: 800 },
   acoesLinha: { display: "flex", gap: 7 },
   botaoPagar: { background: "#15803d", color: "white", border: 0, borderRadius: 7, padding: "8px 10px", cursor: "pointer" },
   botaoAbrirContas: { background: "#17233a", color: "white", border: 0, borderRadius: 9, padding: "12px 14px", cursor: "pointer", fontWeight: 700 },
