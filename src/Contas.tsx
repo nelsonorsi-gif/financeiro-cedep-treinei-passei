@@ -220,6 +220,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
   ] = useState("");
   const [processando, setProcessando] =
     useState(false);
+  const [quitarComDiferenca, setQuitarComDiferenca] = useState(false);
 
   useEffect(() => {
     const carregar = async () => {
@@ -432,6 +433,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
     setFormaPagamento(formaConta);
     setParcelasCartao(Math.max(2, conta.parcelasCartao ?? 2));
     setObservacaoBaixa("");
+    setQuitarComDiferenca(false);
   };
 
   useEffect(() => {
@@ -474,24 +476,34 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
       totalAtualizado - pagoAntes
     );
 
-    if (
-      valorRecebido <= 0 ||
-      valorRecebido >
-        saldoAntes + 0.01
-    ) {
+    if (valorRecebido <= 0) {
+      alert("Informe um valor maior que zero.");
+      return;
+    }
+
+    if (!quitarComDiferenca && valorRecebido > saldoAntes + 0.01) {
       alert(
-        `Informe um valor entre R$ 0,01 e ${moeda(
-          saldoAntes
-        )}.`
+        `O valor é maior que o saldo de ${moeda(saldoAntes)}. Marque "Quitar com valor diferente" para confirmar sem gerar saldo residual.`
       );
       return;
     }
 
-    const novoValorPago =
-      pagoAntes + valorRecebido;
+    const novoValorPago = pagoAntes + valorRecebido;
+    const diferenca = novoValorPago - totalAtualizado;
+    const possuiDiferenca = Math.abs(diferenca) > 0.01;
+
+    if (quitarComDiferenca && possuiDiferenca && !observacaoBaixa.trim()) {
+      alert("Informe uma observação explicando por que a conta será quitada com valor diferente.");
+      return;
+    }
+
     const quitada =
-      novoValorPago >=
-      totalAtualizado - 0.01;
+      quitarComDiferenca ||
+      novoValorPago >= totalAtualizado - 0.01;
+    const observacaoDiferenca =
+      quitarComDiferenca && possuiDiferenca
+        ? `Quitação com valor diferente: previsto ${moeda(totalAtualizado)}, pago ${moeda(novoValorPago)}. ${observacaoBaixa.trim()}`
+        : "";
     const cartao = calcularTaxaCartao(valorRecebido, formaPagamento, parcelasCartao);
     const atualizada: Conta = {
       ...contaBaixa,
@@ -500,6 +512,9 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
       taxaCartao: cartao.taxa,
       valorLiquidoCartao: cartao.liquido,
       valorPago: novoValorPago,
+      observacao: observacaoDiferenca
+        ? [contaBaixa.observacao, observacaoDiferenca].filter(Boolean).join(" | ")
+        : contaBaixa.observacao,
       juros,
       multa,
       desconto,
@@ -526,7 +541,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
         bancoPagamento,
         formaPagamento,
         observacao:
-          observacaoBaixa,
+          observacaoDiferenca || observacaoBaixa,
       });
       registrarMovimentoCaixa(usuarioAtual, {
         natureza: tipo === "receber" ? "entrada" : "saida",
@@ -556,7 +571,9 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
       setContaBaixa(null);
       alert(
         quitada
-          ? "Baixa integral confirmada."
+          ? quitarComDiferenca && possuiDiferenca
+            ? "Conta quitada com o valor informado, sem saldo residual. A diferença foi registrada na observação."
+            : "Baixa integral confirmada."
           : `Baixa parcial registrada. Saldo restante: ${moeda(
               Math.max(
                 0,
@@ -1130,13 +1147,26 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
                     return "Taxa: " + moeda(calculo.taxa) + " • Líquido previsto: " + moeda(calculo.liquido);
                   })()}
                 </div>
-              )}              <CampoTexto
-                label="Observação da baixa"
+              )}              {tipo === "pagar" && (
+                <label style={estilos.opcaoQuitacao}>
+                  <input
+                    type="checkbox"
+                    checked={quitarComDiferenca}
+                    onChange={(evento) => setQuitarComDiferenca(evento.target.checked)}
+                  />
+                  <span>
+                    <strong>Quitar com valor diferente</strong>
+                    <small>Permite pagar um valor menor ou maior e encerrar a conta sem saldo residual.</small>
+                  </span>
+                </label>
+              )}
+              <CampoTexto
+                label={quitarComDiferenca && tipo === "pagar" ? "Observação obrigatória da diferença" : "Observação da baixa"}
                 value={observacaoBaixa}
                 onChange={
                   setObservacaoBaixa
                 }
-                placeholder="Opcional"
+                placeholder={quitarComDiferenca && tipo === "pagar" ? "Explique o motivo da diferença" : "Opcional"}
               />
             </div>
             <div style={estilos.botoes}>
@@ -1254,6 +1284,7 @@ const estilos: Record<string, CSSProperties> = {
     marginBottom: 22,
     lineHeight: 1.5,
   },
+  opcaoQuitacao: { display: "flex", gap: 10, alignItems: "flex-start", padding: 13, borderRadius: 10, background: "#fff7e0", border: "1px solid #f1d279", color: "#694d00" },
   cardsResumo: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
