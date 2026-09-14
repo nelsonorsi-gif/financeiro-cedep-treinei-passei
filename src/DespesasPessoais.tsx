@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { carregarConfiguracoes } from "./Configuracoes";
+import { supabase } from "./lib/supabase";
 
 export const CHAVE_DESPESAS_PESSOAIS = "financeiro-cedep-despesas-pessoais";
 export const CHAVE_CATEGORIAS_PESSOAIS = "financeiro-cedep-categorias-pessoais";
@@ -88,6 +89,8 @@ export default function DespesasPessoais() {
   const [formaPagamento, setFormaPagamento] = useState("");
   const [status, setStatus] = useState<"Pago" | "Pendente">("Pago");
   const [observacao, setObservacao] = useState("");
+  const itemEditando = editandoId ? despesas.find((item) => item.id === editandoId) : undefined;
+  const editandoBaixaRecorrente = itemEditando?.origem === "recorrente";
 
   const persistirDespesas = (proximas: DespesaPessoal[]) => {
     setDespesas(proximas);
@@ -112,8 +115,46 @@ export default function DespesasPessoais() {
     setObservacao("");
   };
 
-  const salvar = () => {
+  const salvar = async () => {
     const valorNumerico = converterValor(valor);
+
+    if (editandoBaixaRecorrente && itemEditando) {
+      if (valorNumerico <= 0) {
+        alert("Informe um valor pago válido.");
+        return;
+      }
+      if (!supabase) {
+        alert("A conexão com o banco não está disponível.");
+        return;
+      }
+
+      const { error } = await supabase
+        .from("ocorrencias_mensais")
+        .update({
+          valor_pago: valorNumerico,
+          status: "Pago",
+          atualizado_em: new Date().toISOString(),
+        })
+        .eq("id", itemEditando.id)
+        .eq("escopo", "Pessoal");
+
+      if (error) {
+        alert("Não foi possível alterar o valor da baixa: " + error.message);
+        return;
+      }
+
+      persistirDespesas(
+        despesas.map((item) =>
+          item.id === itemEditando.id
+            ? { ...item, valorPago: valorNumerico, status: "Pago" }
+            : item
+        )
+      );
+      limparFormulario();
+      alert("Valor da baixa atualizado. O valor da recorrência não foi alterado.");
+      return;
+    }
+
     if (!data || !descricao.trim() || valorNumerico <= 0 || !categoria.trim() || !formaPagamento.trim()) {
       alert("Informe data, histórico, categoria, valor e forma de pagamento.");
       return;
@@ -143,12 +184,17 @@ export default function DespesasPessoais() {
   };
 
   const editar = (item: DespesaPessoal) => {
-    if (item.origem === "recorrente") return;
     setEditandoId(item.id);
     setData(item.vencimento);
     setDescricao(item.descricao);
     setCategoria(item.categoria || "");
-    setValor(String(item.valorPrevisto).replace(".", ","));
+    setValor(
+      String(
+        item.origem === "recorrente"
+          ? item.valorPago
+          : item.valorPrevisto
+      ).replace(".", ",")
+    );
     setFormaPagamento(item.formaPagamento || "");
     setStatus(item.status === "Pago" ? "Pago" : "Pendente");
     setObservacao(item.observacao || "");
@@ -201,27 +247,42 @@ export default function DespesasPessoais() {
       </section>
 
       <section style={estilos.caixa}>
-        <h2>{editandoId ? "Editar despesa" : "Nova despesa pessoal"}</h2>
-        <div style={estilos.formGrid}>
-          <Campo label="Data" type="date" value={data} onChange={setData} />
-          <Campo label="Histórico" value={descricao} onChange={setDescricao} placeholder="Ex.: Mercado" />
-          <CampoComLista label="Categoria" value={categoria} onChange={setCategoria} opcoes={categorias} listaId="categorias-pessoais" placeholder="Digite ou selecione" />
-          <Campo label="Valor" value={valor} onChange={setValor} placeholder="Ex.: 150,00" />
-          <CampoComLista label="Forma de pagamento" value={formaPagamento} onChange={setFormaPagamento} opcoes={formasPagamento} listaId="pagamentos-pessoais" placeholder="Digite ou selecione" />
-          <label style={estilos.campo}>
-            <strong>Situação</strong>
-            <select value={status} onChange={(evento) => setStatus(evento.target.value as "Pago" | "Pendente")} style={estilos.input}>
-              <option>Pago</option>
-              <option>Pendente</option>
-            </select>
-          </label>
-          <Campo label="Observação" value={observacao} onChange={setObservacao} placeholder="Opcional" />
-        </div>
+        <h2>{editandoBaixaRecorrente ? "Editar baixa da despesa recorrente" : editandoId ? "Editar despesa" : "Nova despesa pessoal"}</h2>
+        {editandoBaixaRecorrente && itemEditando ? (
+          <>
+            <div style={estilos.avisoRecorrente}>
+              <strong>{itemEditando.descricao}</strong>
+              <span>Valor previsto: {moeda(Number(itemEditando.valorPrevisto))}</span>
+              <span>Esta alteração vale somente para a baixa de {itemEditando.competencia}. A recorrência continuará com o valor programado.</span>
+            </div>
+            <div style={estilos.formGrid}>
+              <Campo label="Valor efetivamente pago" value={valor} onChange={setValor} placeholder="Ex.: 370,00" />
+            </div>
+          </>
+        ) : (
+          <div style={estilos.formGrid}>
+            <Campo label="Data" type="date" value={data} onChange={setData} />
+            <Campo label="Histórico" value={descricao} onChange={setDescricao} placeholder="Ex.: Mercado" />
+            <CampoComLista label="Categoria" value={categoria} onChange={setCategoria} opcoes={categorias} listaId="categorias-pessoais" placeholder="Digite ou selecione" />
+            <Campo label="Valor" value={valor} onChange={setValor} placeholder="Ex.: 150,00" />
+            <CampoComLista label="Forma de pagamento" value={formaPagamento} onChange={setFormaPagamento} opcoes={formasPagamento} listaId="pagamentos-pessoais" placeholder="Digite ou selecione" />
+            <label style={estilos.campo}>
+              <strong>Situação</strong>
+              <select value={status} onChange={(evento) => setStatus(evento.target.value as "Pago" | "Pendente")} style={estilos.input}>
+                <option>Pago</option>
+                <option>Pendente</option>
+              </select>
+            </label>
+            <Campo label="Observação" value={observacao} onChange={setObservacao} placeholder="Opcional" />
+          </div>
+        )}
         <div style={estilos.acoes}>
-          <button type="button" onClick={salvar} style={estilos.botaoPrincipal}>{editandoId ? "Salvar alteração" : "Adicionar despesa"}</button>
+          <button type="button" onClick={() => void salvar()} style={estilos.botaoPrincipal}>
+            {editandoBaixaRecorrente ? "Salvar valor da baixa" : editandoId ? "Salvar alteração" : "Adicionar despesa"}
+          </button>
           {editandoId ? <button type="button" onClick={limparFormulario} style={estilos.botaoSecundario}>Cancelar</button> : null}
         </div>
-        <p style={estilos.ajuda}>Ao digitar uma categoria ou pagamento novo, ele será cadastrado automaticamente para as próximas seleções.</p>
+        {!editandoBaixaRecorrente && <p style={estilos.ajuda}>Ao digitar uma categoria ou pagamento novo, ele será cadastrado automaticamente para as próximas seleções.</p>}
       </section>
 
       <section style={{ ...estilos.caixa, marginTop: 24 }}>
@@ -244,7 +305,11 @@ export default function DespesasPessoais() {
                   <td style={estilos.td}><strong>{moeda(Number(item.valorPrevisto))}</strong></td>
                   <td style={estilos.td}>{item.formaPagamento || "—"}</td>
                   <td style={estilos.td}><span style={estilos.status}>{item.status}</span></td>
-                  <td style={estilos.td}>{item.origem === "recorrente" ? <span style={estilos.textoCinza}>Edite em Compromissos</span> : <div style={estilos.acoesLinha}><button type="button" onClick={() => editar(item)} style={estilos.botaoSecundario}>Editar</button><button type="button" onClick={() => excluir(item)} style={estilos.botaoExcluir}>Excluir</button></div>}</td>
+                  <td style={estilos.td}>{item.origem === "recorrente"
+  ? item.valorPago > 0
+    ? <button type="button" onClick={() => editar(item)} style={estilos.botaoSecundario}>Editar baixa</button>
+    : <span style={estilos.textoCinza}>Edite em Compromissos</span>
+  : <div style={estilos.acoesLinha}><button type="button" onClick={() => editar(item)} style={estilos.botaoSecundario}>Editar</button><button type="button" onClick={() => excluir(item)} style={estilos.botaoExcluir}>Excluir</button></div>}</td>
                 </tr>
               ))}
               {filtradas.length === 0 ? <tr><td colSpan={7} style={estilos.vazio}>Nenhuma despesa pessoal neste mês.</td></tr> : null}
@@ -275,6 +340,7 @@ const estilos: Record<string, CSSProperties> = {
   card: { background: "white", padding: 22, borderRadius: 15, display: "flex", flexDirection: "column", gap: 10, boxShadow: "0 6px 18px rgba(0,0,0,.06)" },
   caixa: { background: "white", padding: 28, borderRadius: 17, boxShadow: "0 6px 18px rgba(0,0,0,.06)" },
   formGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 15 },
+  avisoRecorrente: { display: "grid", gap: 6, marginBottom: 16, padding: 14, borderRadius: 10, background: "#fff7e0", border: "1px solid #f1d279", color: "#694d00" },
   campo: { display: "flex", flexDirection: "column", gap: 7 },
   input: { width: "100%", padding: "12px 13px", border: "1px solid #cbd5e1", borderRadius: 9, boxSizing: "border-box", fontSize: 15 },
   acoes: { display: "flex", gap: 10, flexWrap: "wrap", marginTop: 20 },
