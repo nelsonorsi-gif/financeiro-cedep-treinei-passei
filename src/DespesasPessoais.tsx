@@ -131,6 +131,7 @@ export default function DespesasPessoais() {
       const { error } = await supabase
         .from("ocorrencias_mensais")
         .update({
+          valor_previsto: valorNumerico,
           valor_pago: valorNumerico,
           status: "Pago",
           atualizado_em: new Date().toISOString(),
@@ -146,12 +147,12 @@ export default function DespesasPessoais() {
       persistirDespesas(
         despesas.map((item) =>
           item.id === itemEditando.id
-            ? { ...item, valorPago: valorNumerico, status: "Pago" }
+            ? { ...item, valorPrevisto: valorNumerico, valorPago: valorNumerico, status: "Pago" }
             : item
         )
       );
       limparFormulario();
-      alert("Valor da baixa atualizado. O valor da recorrência não foi alterado.");
+      alert("Valor previsto e valor pago desta competência foram atualizados. A recorrência não foi alterada.");
       return;
     }
 
@@ -253,7 +254,7 @@ export default function DespesasPessoais() {
             <div style={estilos.avisoRecorrente}>
               <strong>{itemEditando.descricao}</strong>
               <span>Valor previsto: {moeda(Number(itemEditando.valorPrevisto))}</span>
-              <span>Esta alteração vale somente para a baixa de {itemEditando.competencia}. A recorrência continuará com o valor programado.</span>
+              <span>Esta alteração atualiza o valor previsto e o valor pago de {itemEditando.competencia}. A recorrência dos próximos meses continuará com o valor programado.</span>
             </div>
             <div style={estilos.formGrid}>
               <Campo label="Valor efetivamente pago" value={valor} onChange={setValor} placeholder="Ex.: 370,00" />
