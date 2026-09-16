@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { podeAcessar, type UsuarioSessao } from "./Acesso";
+import { CHAVE_ACADEMICO } from "./Academico";
 import { supabase } from "./lib/supabase";
 import {
   EVENTO_NOTIFICACOES,
@@ -26,6 +27,32 @@ type ContaDoDia = {
   formaPagamento: string;
   unidade: string;
 };
+type JustificativaFalta = {
+  texto: string;
+  usuarioId: string;
+  usuarioNome: string;
+  registradoEm: string;
+};
+
+type RegistroPresencaAlerta = {
+  id: string;
+  turmaId: string;
+  data: string;
+  faltas: string[];
+  justificativas?: Record<string, JustificativaFalta>;
+};
+
+type AlertaFalta = {
+  chave: string;
+  alunoId: string;
+  alunoNome: string;
+  turmaId: string;
+  turmaNome: string;
+  quantidade: number;
+  datas: string[];
+  justificativa?: JustificativaFalta;
+};
+
 type Filtro = "todas" | "nao_lidas" | PrioridadeNotificacao;
 
 const descricoes: Record<string, string> = {
@@ -54,6 +81,62 @@ const formatarData = (valor: string) => {
   return Number.isNaN(data.getTime()) ? "" : data.toLocaleString("pt-BR");
 };
 
+const carregarAlertasFaltas = (): AlertaFalta[] => {
+  try {
+    const salvo = localStorage.getItem(CHAVE_ACADEMICO);
+    if (!salvo) return [];
+    const dados = JSON.parse(salvo) as {
+      turmas?: Array<{ id: string; nome: string }>;
+      matriculas?: Array<{
+        aluno_id: string;
+        aluno_nome: string;
+        turma_id: string;
+        status?: string;
+      }>;
+      presencas?: RegistroPresencaAlerta[];
+    };
+    const turmas = Array.isArray(dados.turmas) ? dados.turmas : [];
+    const matriculas = Array.isArray(dados.matriculas) ? dados.matriculas : [];
+    const presencas = Array.isArray(dados.presencas) ? dados.presencas : [];
+    const alertas: AlertaFalta[] = [];
+
+    for (const matricula of matriculas) {
+      if (matricula.status === "Cancelada") continue;
+      const aulas = presencas
+        .filter((registro) => registro.turmaId === matricula.turma_id)
+        .sort((a, b) => b.data.localeCompare(a.data));
+      const sequencia: RegistroPresencaAlerta[] = [];
+      for (const aula of aulas) {
+        if (!aula.faltas.includes(matricula.aluno_id)) break;
+        sequencia.push(aula);
+      }
+      if (sequencia.length < 2) continue;
+      const turma = turmas.find((item) => item.id === matricula.turma_id);
+      const justificativa = sequencia
+        .map((registro) => registro.justificativas?.[matricula.aluno_id])
+        .find((item): item is JustificativaFalta => Boolean(item?.texto));
+      alertas.push({
+        chave: matricula.turma_id + "-" + matricula.aluno_id,
+        alunoId: matricula.aluno_id,
+        alunoNome: matricula.aluno_nome,
+        turmaId: matricula.turma_id,
+        turmaNome: turma?.nome || "Turma não localizada",
+        quantidade: sequencia.length,
+        datas: sequencia.map((registro) => registro.data),
+        justificativa,
+      });
+    }
+
+    return alertas.sort((a, b) =>
+      b.quantidade - a.quantidade ||
+      a.alunoNome.localeCompare(b.alunoNome, "pt-BR")
+    );
+  } catch (erro) {
+    console.error("Erro ao calcular alertas de faltas:", erro);
+    return [];
+  }
+};
+
 export default function Inicio({
   usuario, modulos, onAbrir, onQuantidadeAlterada,
   onAbrirContaPagar, onAbrirDespesaPessoal,
@@ -63,20 +146,28 @@ export default function Inicio({
   const [contasDoDia, setContasDoDia] = useState<ContaDoDia[]>([]);
   const [carregandoContas, setCarregandoContas] = useState(false);
   const [erroContas, setErroContas] = useState("");
+  const [alertasFaltas, setAlertasFaltas] = useState<AlertaFalta[]>(carregarAlertasFaltas);
+  const [alertaJustificando, setAlertaJustificando] = useState<string | null>(null);
+  const [textoJustificativa, setTextoJustificativa] = useState("");
 
   useEffect(() => {
-    const atualizar = () => setVersao((atual) => atual + 1);
+    const atualizar = () => {
+      setVersao((atual) => atual + 1);
+      setAlertasFaltas(carregarAlertasFaltas());
+    };
     const intervalo = window.setInterval(atualizar, 60_000);
     window.addEventListener("storage", atualizar);
     window.addEventListener("focus", atualizar);
     window.addEventListener(EVENTO_NOTIFICACOES, atualizar);
     window.addEventListener("financeiro-caixa-atualizado", atualizar);
+    window.addEventListener("financeiro-academico-atualizado", atualizar);
     return () => {
       window.clearInterval(intervalo);
       window.removeEventListener("storage", atualizar);
       window.removeEventListener("focus", atualizar);
       window.removeEventListener(EVENTO_NOTIFICACOES, atualizar);
       window.removeEventListener("financeiro-caixa-atualizado", atualizar);
+      window.removeEventListener("financeiro-academico-atualizado", atualizar);
     };
   }, []);
 
@@ -202,6 +293,50 @@ export default function Inicio({
     else alert("Seu perfil não possui permissão para abrir este módulo.");
   };
 
+  const iniciarJustificativa = (alerta: AlertaFalta) => {
+    setAlertaJustificando(alerta.chave);
+    setTextoJustificativa(alerta.justificativa?.texto || "");
+  };
+
+  const salvarJustificativa = (alerta: AlertaFalta) => {
+    const texto = textoJustificativa.trim();
+    if (!texto) {
+      alert("Digite a justificativa das faltas.");
+      return;
+    }
+    try {
+      const salvo = localStorage.getItem(CHAVE_ACADEMICO);
+      if (!salvo) throw new Error("Dados acadêmicos não encontrados.");
+      const dados = JSON.parse(salvo) as { presencas?: RegistroPresencaAlerta[] };
+      const datas = new Set(alerta.datas);
+      const justificativa: JustificativaFalta = {
+        texto,
+        usuarioId: usuario.id,
+        usuarioNome: usuario.nome,
+        registradoEm: new Date().toISOString(),
+      };
+      dados.presencas = (dados.presencas || []).map((registro) => {
+        if (registro.turmaId !== alerta.turmaId || !datas.has(registro.data)) return registro;
+        return {
+          ...registro,
+          justificativas: {
+            ...(registro.justificativas || {}),
+            [alerta.alunoId]: justificativa,
+          },
+        };
+      });
+      localStorage.setItem(CHAVE_ACADEMICO, JSON.stringify(dados));
+      setAlertaJustificando(null);
+      setTextoJustificativa("");
+      setAlertasFaltas(carregarAlertasFaltas());
+      window.dispatchEvent(new CustomEvent("financeiro-academico-atualizado"));
+      alert("Justificativa salva no histórico das faltas.");
+    } catch (erro) {
+      console.error("Erro ao salvar justificativa:", erro);
+      alert("Não foi possível salvar a justificativa. Tente novamente.");
+    }
+  };
+
   return (
     <div style={estilos.pagina}>
       <section style={estilos.boasVindas}>
@@ -217,6 +352,75 @@ export default function Inicio({
         </div>
       </section>
 
+
+      <section style={estilos.faltas}>
+        <div style={estilos.topo}>
+          <div>
+            <h2 style={estilos.subtitulo}>Alunos com faltas consecutivas</h2>
+            <p style={estilos.legenda}>Duas faltas: alerta laranja. Três ou mais: alerta vermelho. Visível para todos os perfis.</p>
+          </div>
+          <span style={estilos.contadorFaltas}>{alertasFaltas.length} aluno(s)</span>
+        </div>
+
+        {alertasFaltas.length === 0 ? (
+          <div style={{ ...estilos.semAvisos, marginTop: 16 }}>✅ Nenhum aluno possui duas faltas consecutivas.</div>
+        ) : (
+          <div style={estilos.listaFaltas}>
+            {alertasFaltas.map((alerta) => {
+              const grave = alerta.quantidade >= 3;
+              const aberto = alertaJustificando === alerta.chave;
+              return (
+                <article
+                  key={alerta.chave}
+                  style={{
+                    ...estilos.alertaFalta,
+                    borderColor: grave ? "#ef4444" : "#f59e0b",
+                    background: grave ? "#fff1f2" : "#fff7ed",
+                  }}
+                >
+                  <span style={{ ...estilos.sinalFalta, background: grave ? "#dc2626" : "#f59e0b" }} />
+                  <div style={estilos.corpoFalta}>
+                    <div style={estilos.linhaTitulo}>
+                      <strong style={{ color: grave ? "#991b1b" : "#9a3412" }}>{alerta.alunoNome}</strong>
+                      <span style={{ ...estilos.badgeFalta, background: grave ? "#dc2626" : "#ea580c" }}>
+                        {alerta.quantidade} faltas consecutivas
+                      </span>
+                    </div>
+                    <p style={estilos.descricaoAviso}>
+                      {alerta.turmaNome} • Datas: {alerta.datas.map((data) => data.split("-").reverse().join("/")).join(", ")}
+                    </p>
+                    {alerta.justificativa && (
+                      <div style={estilos.justificativaSalva}>
+                        <strong>Justificativa:</strong> {alerta.justificativa.texto}
+                        <small style={estilos.data}> Registrada por {alerta.justificativa.usuarioNome} em {formatarData(alerta.justificativa.registradoEm)}.</small>
+                      </div>
+                    )}
+                    {aberto ? (
+                      <div style={estilos.editorJustificativa}>
+                        <textarea
+                          value={textoJustificativa}
+                          onChange={(evento) => setTextoJustificativa(evento.target.value)}
+                          placeholder="Digite o motivo das faltas e as providências tomadas..."
+                          rows={3}
+                          style={estilos.textareaJustificativa}
+                        />
+                        <div style={estilos.acoes}>
+                          <button type="button" onClick={() => salvarJustificativa(alerta)} style={estilos.botaoAcao}>Salvar justificativa</button>
+                          <button type="button" onClick={() => { setAlertaJustificando(null); setTextoJustificativa(""); }} style={estilos.botaoSecundario}>Cancelar</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => iniciarJustificativa(alerta)} style={estilos.botaoJustificar}>
+                        {alerta.justificativa ? "Editar justificativa" : "Justificar faltas"}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {usuario.perfil === "Administrador" && (
         <section style={estilos.vencimentos}>
@@ -373,6 +577,17 @@ const estilos: Record<string, CSSProperties> = {
   titulo: { margin: "8px 0", fontSize: 30 },
   texto: { margin: 0, color: "#dfe8f5", lineHeight: 1.5 },
   sino: { minWidth: 105, padding: 13, display: "grid", placeItems: "center", borderRadius: 16, background: "rgba(255,255,255,.12)", fontSize: 20 },
+  faltas: { padding: 22, borderRadius: 16, background: "white", border: "1px solid #fdba74", boxShadow: "0 8px 24px rgba(16,26,45,.08)" },
+  contadorFaltas: { padding: "8px 12px", borderRadius: 999, background: "#fff7ed", color: "#9a3412", fontWeight: 800 },
+  listaFaltas: { display: "grid", gap: 11, marginTop: 18 },
+  alertaFalta: { display: "flex", gap: 13, padding: 16, border: "1px solid", borderRadius: 12 },
+  sinalFalta: { width: 13, height: 13, borderRadius: "50%", marginTop: 4, flex: "0 0 auto" },
+  corpoFalta: { minWidth: 0, flex: 1 },
+  badgeFalta: { padding: "3px 8px", borderRadius: 999, color: "white", fontSize: 11, fontWeight: 900 },
+  justificativaSalva: { marginTop: 10, padding: 11, borderRadius: 9, background: "rgba(255,255,255,.72)", color: "#334155", lineHeight: 1.45 },
+  editorJustificativa: { marginTop: 12 },
+  textareaJustificativa: { width: "100%", boxSizing: "border-box", resize: "vertical", padding: 11, borderRadius: 9, border: "1px solid #cbd5e1", font: "inherit", color: "#15233d" },
+  botaoJustificar: { marginTop: 11, border: 0, borderRadius: 8, padding: "8px 12px", background: "#15233d", color: "white", cursor: "pointer", fontWeight: 800 },
   vencimentos: { padding: 22, borderRadius: 16, background: "white", border: "1px solid #f4c86a", boxShadow: "0 8px 24px rgba(16,26,45,.08)" },
   contadorVencimentos: { padding: "8px 12px", borderRadius: 999, background: "#fff7e0", color: "#854d0e", fontWeight: 800 },
   listaVencimentos: { display: "grid", gap: 10, marginTop: 18 },
