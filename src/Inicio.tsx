@@ -29,6 +29,7 @@ type ContaDoDia = {
 };
 type JustificativaFalta = {
   texto: string;
+  tipo?: "justificativa" | "dispensado";
   usuarioId: string;
   usuarioNome: string;
   registradoEm: string;
@@ -112,6 +113,9 @@ const carregarAlertasFaltas = (): AlertaFalta[] => {
       }
       if (sequencia.length < 2) continue;
       const turma = turmas.find((item) => item.id === matricula.turma_id);
+      const tratamentoDaFaltaMaisRecente =
+        sequencia[0]?.justificativas?.[matricula.aluno_id];
+      if (tratamentoDaFaltaMaisRecente) continue;
       const justificativa = sequencia
         .map((registro) => registro.justificativas?.[matricula.aluno_id])
         .find((item): item is JustificativaFalta => Boolean(item?.texto));
@@ -311,6 +315,7 @@ export default function Inicio({
       const datas = new Set(alerta.datas);
       const justificativa: JustificativaFalta = {
         texto,
+        tipo: "justificativa",
         usuarioId: usuario.id,
         usuarioNome: usuario.nome,
         registradoEm: new Date().toISOString(),
@@ -334,6 +339,40 @@ export default function Inicio({
     } catch (erro) {
       console.error("Erro ao salvar justificativa:", erro);
       alert("Não foi possível salvar a justificativa. Tente novamente.");
+    }
+  };
+
+  const dispensarAlertaFalta = (alerta: AlertaFalta) => {
+    try {
+      const salvo = localStorage.getItem(CHAVE_ACADEMICO);
+      if (!salvo) throw new Error("Dados acadêmicos não encontrados.");
+      const dados = JSON.parse(salvo) as { presencas?: RegistroPresencaAlerta[] };
+      const datas = new Set(alerta.datas);
+      const dispensa: JustificativaFalta = {
+        texto: "Alerta dispensado.",
+        tipo: "dispensado",
+        usuarioId: usuario.id,
+        usuarioNome: usuario.nome,
+        registradoEm: new Date().toISOString(),
+      };
+      dados.presencas = (dados.presencas || []).map((registro) => {
+        if (registro.turmaId !== alerta.turmaId || !datas.has(registro.data)) return registro;
+        return {
+          ...registro,
+          justificativas: {
+            ...(registro.justificativas || {}),
+            [alerta.alunoId]: dispensa,
+          },
+        };
+      });
+      localStorage.setItem(CHAVE_ACADEMICO, JSON.stringify(dados));
+      setAlertaJustificando(null);
+      setTextoJustificativa("");
+      setAlertasFaltas(carregarAlertasFaltas());
+      window.dispatchEvent(new CustomEvent("financeiro-academico-atualizado"));
+    } catch (erro) {
+      console.error("Erro ao dispensar alerta de faltas:", erro);
+      alert("Não foi possível dispensar o alerta. Tente novamente.");
     }
   };
 
@@ -410,9 +449,14 @@ export default function Inicio({
                         </div>
                       </div>
                     ) : (
-                      <button type="button" onClick={() => iniciarJustificativa(alerta)} style={estilos.botaoJustificar}>
-                        {alerta.justificativa ? "Editar justificativa" : "Justificar faltas"}
-                      </button>
+                      <div style={estilos.acoes}>
+                        <button type="button" onClick={() => iniciarJustificativa(alerta)} style={estilos.botaoJustificar}>
+                          Justificar faltas
+                        </button>
+                        <button type="button" onClick={() => dispensarAlertaFalta(alerta)} style={estilos.botaoDispensarFalta}>
+                          Dispensar alerta
+                        </button>
+                      </div>
                     )}
                   </div>
                 </article>
@@ -587,7 +631,8 @@ const estilos: Record<string, CSSProperties> = {
   justificativaSalva: { marginTop: 10, padding: 11, borderRadius: 9, background: "rgba(255,255,255,.72)", color: "#334155", lineHeight: 1.45 },
   editorJustificativa: { marginTop: 12 },
   textareaJustificativa: { width: "100%", boxSizing: "border-box", resize: "vertical", padding: 11, borderRadius: 9, border: "1px solid #cbd5e1", font: "inherit", color: "#15233d" },
-  botaoJustificar: { marginTop: 11, border: 0, borderRadius: 8, padding: "8px 12px", background: "#15233d", color: "white", cursor: "pointer", fontWeight: 800 },
+  botaoJustificar: { border: 0, borderRadius: 8, padding: "8px 12px", background: "#15233d", color: "white", cursor: "pointer", fontWeight: 800 },
+  botaoDispensarFalta: { border: "1px solid #cbd5e1", borderRadius: 8, padding: "8px 12px", background: "white", color: "#475569", cursor: "pointer", fontWeight: 700 },
   vencimentos: { padding: 22, borderRadius: 16, background: "white", border: "1px solid #f4c86a", boxShadow: "0 8px 24px rgba(16,26,45,.08)" },
   contadorVencimentos: { padding: "8px 12px", borderRadius: 999, background: "#fff7e0", color: "#854d0e", fontWeight: 800 },
   listaVencimentos: { display: "grid", gap: 10, marginTop: 18 },
