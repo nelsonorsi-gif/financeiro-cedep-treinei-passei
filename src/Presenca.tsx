@@ -11,11 +11,19 @@ import {
   type Turma,
 } from "./Academico";
 
+type JustificativaFalta = {
+  texto: string;
+  usuarioId: string;
+  usuarioNome: string;
+  registradoEm: string;
+};
+
 type RegistroPresenca = {
   id: string;
   turmaId: string;
   data: string;
   faltas: string[];
+  justificativas?: Record<string, JustificativaFalta>;
   registradoPorId: string;
   registradoEm: string;
 };
@@ -137,11 +145,15 @@ export default function Presenca({
       alert("Selecione a turma e a data.");
       return;
     }
+    const registroAnterior = dados.presencas?.find(
+      (item) => item.turmaId === turmaId && item.data === data
+    );
     const registro: RegistroPresenca = {
       id: `presenca-${turmaId}-${data}`,
       turmaId,
       data,
       faltas,
+      justificativas: registroAnterior?.justificativas,
       registradoPorId: usuarioAtual.id,
       registradoEm: new Date().toISOString(),
     };
