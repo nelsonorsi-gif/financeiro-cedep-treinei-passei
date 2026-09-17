@@ -23,6 +23,7 @@ export type RecebimentoCaixa = {
   alunoId: string;
   alunoNome: string;
   descricao: string;
+  tipoEntrada: string;
   valor: number;
   formaPagamento: string;
   unidade: string;
@@ -104,13 +105,20 @@ const tipoRealDoMovimento = (
         id?: string;
         contaId?: string;
         movimentoCaixaId?: string;
+        descricao?: string;
+        entrada?: number;
+        saida?: number;
         tipoEntrada?: string;
         tipoSaida?: string;
       }>;
+      const descricaoNormalizada = base.descricao.trim().toLocaleLowerCase("pt-BR");
       const vinculado = lancamentos.find((item) =>
         item.movimentoCaixaId === base.id ||
         item.id === base.origemId ||
         item.contaId === base.origemId
+      ) || lancamentos.find((item) =>
+        String(item.descricao || "").trim().toLocaleLowerCase("pt-BR") === descricaoNormalizada &&
+        Math.abs(Math.max(Number(item.entrada || 0), Number(item.saida || 0)) - base.valor) < 0.01
       );
       categoria = vinculado?.tipoEntrada || vinculado?.tipoSaida;
     } catch {
@@ -229,6 +237,8 @@ function Secretaria({
   const [alunoId, setAlunoId] =
     useState("");
   const [descricao, setDescricao] =
+    useState("");
+  const [tipoEntrada, setTipoEntrada] =
     useState("Mensalidade");
   const [valor, setValor] =
     useState("");
@@ -462,11 +472,12 @@ function Secretaria({
     if (
       !aluno ||
       !descricao.trim() ||
+      !tipoEntrada ||
       valorNumerico <= 0 ||
       !formaPagamento
     ) {
       alert(
-        "Preencha aluno, descrição, valor e forma de pagamento."
+        "Preencha aluno, tipo de entrada, descrição, valor e forma de pagamento."
       );
       return;
     }
@@ -479,6 +490,7 @@ function Secretaria({
       alunoNome: aluno.nome,
       descricao:
         descricao.trim(),
+      tipoEntrada,
       valor: valorNumerico,
       formaPagamento,
       unidade:
@@ -494,7 +506,7 @@ function Secretaria({
 
     const movimentoRegistrado = registrarMovimentoCaixa(usuarioAtual, {
       natureza: "entrada", origem: "secretaria", origemId: recebimento.id,
-      descricao: recebimento.descricao, tipoEntrada: recebimento.descricao, valor: recebimento.valor,
+      descricao: recebimento.descricao, tipoEntrada: recebimento.tipoEntrada, valor: recebimento.valor,
       formaPagamento: recebimento.formaPagamento, modalidadeCartao: recebimento.modalidadeCartao, parcelasCartao: recebimento.parcelasCartao, taxaCartao: recebimento.taxaCartao, valorLiquido: recebimento.valorLiquidoCartao, alunoId: recebimento.alunoId, alunoNome: recebimento.alunoNome,
     });
 
@@ -505,7 +517,8 @@ function Secretaria({
     });
 
     setAlunoId("");
-    setDescricao("Mensalidade");
+    setDescricao("");
+    setTipoEntrada("Mensalidade");
     setValor("");
     setParcelasCartao(2);
     alert(
@@ -1047,6 +1060,12 @@ function Secretaria({
                     })
                   )}
                   onChange={setAlunoId}
+                />
+                <CampoSelect
+                  label="Tipo de entrada"
+                  value={tipoEntrada}
+                  opcoes={configuracoes.tiposEntrada}
+                  onChange={setTipoEntrada}
                 />
                 <Campo
                   label="Descrição"
