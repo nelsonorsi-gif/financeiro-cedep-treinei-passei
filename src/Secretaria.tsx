@@ -84,6 +84,58 @@ const moeda = (valor: number) =>
     currency: "BRL",
   });
 
+const tipoRealDoMovimento = (
+  movimento: MovimentoCaixa,
+  movimentos: MovimentoCaixa[]
+) => {
+  const original = movimento.estornoDeId
+    ? movimentos.find((item) => item.id === movimento.estornoDeId)
+    : undefined;
+  const base = original || movimento;
+  let categoria = base.natureza === "entrada" || base.natureza === "estorno_saida"
+    ? base.tipoEntrada
+    : base.tipoSaida;
+
+  if (!categoria) {
+    try {
+      const lancamentos = JSON.parse(
+        localStorage.getItem("financeiro-cedep-lancamentos") || "[]"
+      ) as Array<{
+        id?: string;
+        contaId?: string;
+        movimentoCaixaId?: string;
+        tipoEntrada?: string;
+        tipoSaida?: string;
+      }>;
+      const vinculado = lancamentos.find((item) =>
+        item.movimentoCaixaId === base.id ||
+        item.id === base.origemId ||
+        item.contaId === base.origemId
+      );
+      categoria = vinculado?.tipoEntrada || vinculado?.tipoSaida;
+    } catch {
+      // Mantém a identificação de origem quando não houver lançamento vinculado.
+    }
+  }
+
+  if (!categoria) {
+    const padroes: Partial<Record<MovimentoCaixa["origem"], string>> = {
+      mensalidade: "Mensalidade",
+      secretaria: base.descricao || "Recebimento da secretaria",
+      taxa_cartao: "Taxas de cartão",
+      conta_receber: "Conta a receber",
+      conta_pagar: "Conta a pagar",
+      receita: "Receita",
+      despesa: "Despesa",
+    };
+    categoria = padroes[base.origem] || base.origem.replaceAll("_", " ");
+  }
+
+  return movimento.natureza.startsWith("estorno")
+    ? "Estorno - " + categoria
+    : categoria;
+};
+
 const converterNumero = (
   valor: string
 ) => {
@@ -442,7 +494,7 @@ function Secretaria({
 
     const movimentoRegistrado = registrarMovimentoCaixa(usuarioAtual, {
       natureza: "entrada", origem: "secretaria", origemId: recebimento.id,
-      descricao: recebimento.descricao, valor: recebimento.valor,
+      descricao: recebimento.descricao, tipoEntrada: recebimento.descricao, valor: recebimento.valor,
       formaPagamento: recebimento.formaPagamento, modalidadeCartao: recebimento.modalidadeCartao, parcelasCartao: recebimento.parcelasCartao, taxaCartao: recebimento.taxaCartao, valorLiquido: recebimento.valorLiquidoCartao, alunoId: recebimento.alunoId, alunoNome: recebimento.alunoNome,
     });
 
@@ -687,11 +739,7 @@ function Secretaria({
         const entrada =
           movimento.natureza === "entrada" ||
           movimento.natureza === "estorno_saida";
-        const tipo = movimento.natureza.startsWith("estorno")
-          ? movimento.natureza === "estorno_entrada"
-            ? "Estorno de entrada"
-            : "Estorno de saída"
-          : movimento.origem.replaceAll("_", " ");
+        const tipo = tipoRealDoMovimento(movimento, movimentosVisualizados);
         const detalhes = [
           movimento.alunoNome,
           movimento.motivoEstorno ? "Motivo: " + movimento.motivoEstorno : "",
@@ -1137,11 +1185,7 @@ function Secretaria({
                       const entrada =
                         movimento.natureza === "entrada" ||
                         movimento.natureza === "estorno_saida";
-                      const tipo = movimento.natureza.startsWith("estorno")
-                        ? movimento.natureza === "estorno_entrada"
-                          ? "Estorno de entrada"
-                          : "Estorno de saída"
-                        : movimento.origem.replaceAll("_", " ");
+                      const tipo = tipoRealDoMovimento(movimento, movimentosVisualizados);
                       return (
                         <tr key={movimento.id}>
                           <td style={estilos.td}>{new Date(movimento.dataHora).toLocaleString("pt-BR")}</td>
