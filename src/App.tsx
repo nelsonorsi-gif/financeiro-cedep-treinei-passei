@@ -1774,6 +1774,7 @@ function App() {
           usuarioResponsavelId: usuarioAtual.id,
           usuarioResponsavelNome: usuarioAtual.nome,
           caixaId: "caixaId" in identificacaoCaixa ? identificacaoCaixa.caixaId : undefined,
+          movimentoCaixaId: identificacaoCaixa.id,
           operacaoAdministrativa: usuarioAtual.perfil === "Administrador",
           parcelasCartao: cartao.parcelas,
           taxaCartao: cartao.taxa,
@@ -2316,7 +2317,7 @@ function App() {
           descricao:
             `${recebimento.descricao} - ${recebimento.alunoNome}`,
           tipoEntrada:
-            "Mensalidade",
+            recebimento.tipoEntrada || "Mensalidade",
           tipoSaida: "",
           formaPagamento:
             recebimento.formaPagamento,
