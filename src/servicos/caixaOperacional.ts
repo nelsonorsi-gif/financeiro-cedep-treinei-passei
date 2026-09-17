@@ -15,6 +15,8 @@ export type MovimentoCaixa = {
   origem: "mensalidade" | "conta_receber" | "conta_pagar" | "receita" | "despesa" | "secretaria" | "taxa_cartao" | "estorno" | "lancamento";
   origemId: string;
   descricao: string;
+  tipoEntrada?: string;
+  tipoSaida?: string;
   valor: number;
   formaPagamento: string;
   dataHora: string;
@@ -156,6 +158,8 @@ export const registrarEstornoCaixa = ({
     origem: "estorno",
     origemId: original.origemId,
     descricao: `Estorno: ${original.descricao}`,
+    tipoEntrada: original.tipoSaida,
+    tipoSaida: original.tipoEntrada,
     valor: original.valor,
     formaPagamento: original.formaPagamento,
     alunoId: original.alunoId,
