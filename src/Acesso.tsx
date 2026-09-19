@@ -49,6 +49,7 @@ export const MODULOS_ERP = [
   "Compromissos Mensais",
   "Despesas Pessoais",
   "Bancos",
+  "Investimentos",
   "Importar Excel",
   "Relatórios",
   "Gestão e Fechamento",
