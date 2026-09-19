@@ -26,6 +26,7 @@ const CHAVES_COMPARTILHADAS = [
   "financeiro-cedep-categorias-pessoais",
   "financeiro-cedep-pagamentos-pessoais",
   "financeiro-cedep-taxas-cartao",
+  "financeiro-cedep-investimentos",
 ] as const;
 
 export const EVENTO_SINCRONIZACAO_REMOTA =
@@ -44,6 +45,8 @@ const EVENTOS_POR_CHAVE: Partial<
     "financeiro-despesas-pessoais-atualizadas",
   "financeiro-cedep-taxas-cartao":
     "financeiro-taxas-cartao-atualizadas",
+  "financeiro-cedep-investimentos":
+    "financeiro-investimentos-atualizados",
 };
 
 type RegistroNuvem = {
@@ -176,6 +179,7 @@ const CHAVES_COM_MESCLAGEM = new Set<string>([
   "financeiro-cedep-configuracoes-contratos",
   "financeiro-cedep-despesas-pessoais",
   "financeiro-cedep-escolas",
+  "financeiro-cedep-investimentos",
 ]);
 
 const calcularRemocoes = (
