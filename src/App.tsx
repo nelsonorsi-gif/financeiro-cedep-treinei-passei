@@ -28,6 +28,11 @@ import CompromissosMensais, {
   type PagamentoCompromisso,
 } from "./CompromissosMensais";
 import DespesasPessoais, { type DespesaPessoal } from "./DespesasPessoais";
+import Investimentos, {
+  carregarInvestimentos,
+  EVENTO_INVESTIMENTOS,
+  type Investimento,
+} from "./Investimentos";
 import { normalizarListaUnidades, normalizarUnidade } from "./utils/unidades";
 import {
   TelaLogin,
@@ -149,6 +154,12 @@ type ResumoBanco = {
   saidas: number;
 
   saidasPessoais: number;
+
+  investimentos: number;
+
+  aportesInvestimentos: number;
+
+  resgatesInvestimentos: number;
 
   saldo: number;
 
@@ -473,6 +484,20 @@ function App() {
     useState<DespesaPessoal[]>(
       carregarDespesasPessoais
     );
+
+  const [investimentos, setInvestimentos] =
+    useState<Investimento[]>(carregarInvestimentos);
+
+  useEffect(() => {
+    const atualizarInvestimentos = () =>
+      setInvestimentos(carregarInvestimentos());
+    window.addEventListener(EVENTO_INVESTIMENTOS, atualizarInvestimentos);
+    window.addEventListener(EVENTO_SINCRONIZACAO_REMOTA, atualizarInvestimentos);
+    return () => {
+      window.removeEventListener(EVENTO_INVESTIMENTOS, atualizarInvestimentos);
+      window.removeEventListener(EVENTO_SINCRONIZACAO_REMOTA, atualizarInvestimentos);
+    };
+  }, []);
 
   useEffect(() => {
     const atualizar = () =>
@@ -962,6 +987,7 @@ function App() {
           [
             ...lancamentosFinanceiros.map((item) => item.competencia.trim()),
             ...despesasPessoais.map((item) => item.competencia.trim()),
+            ...investimentos.map((item) => item.competencia.trim()),
           ].filter(Boolean)
         )
       );
@@ -981,7 +1007,7 @@ function App() {
           );
         }
       );
-    }, [lancamentos, despesasPessoais]);
+    }, [lancamentos, despesasPessoais, investimentos]);
 
   const lancamentosDashboard =
     useMemo(
@@ -1035,9 +1061,30 @@ function App() {
         0
       );
 
+  const investimentosDashboard = investimentos.filter(
+    (item) =>
+      competenciaDashboard === "Todas" ||
+      item.competencia === competenciaDashboard
+  );
+  const aportesInvestimentosDashboard = investimentosDashboard
+    .filter((item) => item.operacao === "Aporte")
+    .reduce((total, item) => total + item.valor, 0);
+  const resgatesInvestimentosDashboard = investimentosDashboard
+    .filter((item) => item.operacao === "Resgate")
+    .reduce((total, item) => total + item.valor, 0);
+  const rendimentosInvestimentosDashboard = investimentosDashboard
+    .filter((item) => item.operacao === "Rendimento")
+    .reduce((total, item) => total + item.valor, 0);
+  const patrimonioInvestidoDashboard =
+    aportesInvestimentosDashboard +
+    rendimentosInvestimentosDashboard -
+    resgatesInvestimentosDashboard;
+
   const saldoRealDashboard =
     saldoDashboard -
-    despesasPessoaisDashboard;
+    despesasPessoaisDashboard -
+    aportesInvestimentosDashboard +
+    resgatesInvestimentosDashboard;
 
   const resumoUnidadesDashboard =
     useMemo(() => {
@@ -1163,6 +1210,7 @@ function App() {
         new Set([
           ...lancamentosFinanceiros.map((item) => item.competencia.trim()),
           ...despesasPessoais.map((item) => item.competencia.trim()),
+          ...investimentos.map((item) => item.competencia.trim()),
         ].filter(Boolean))
       );
       return lista.sort((a, b) => {
@@ -1170,7 +1218,7 @@ function App() {
         const [mesB, anoB] = b.split("/");
         return Number(anoB) * 100 + Number(mesB) - (Number(anoA) * 100 + Number(mesA));
       });
-    }, [lancamentos, despesasPessoais]);
+    }, [lancamentos, despesasPessoais, investimentos]);
 
   const unidadesDisponiveisBancos =
     useMemo(
@@ -1237,6 +1285,18 @@ function App() {
         }),
       [despesasPessoais, competenciaBancos, dataInicialBancos, dataFinalBancos]
     );
+  const investimentosBancos = useMemo(
+    () =>
+      investimentos.filter((item) => {
+        const correspondeCompetencia =
+          competenciaBancos === "Todas" || item.competencia === competenciaBancos;
+        const correspondeInicio = !dataInicialBancos || item.data >= dataInicialBancos;
+        const correspondeFim = !dataFinalBancos || item.data <= dataFinalBancos;
+        return correspondeCompetencia && correspondeInicio && correspondeFim;
+      }),
+    [investimentos, competenciaBancos, dataInicialBancos, dataFinalBancos]
+  );
+
   const resumoBancos =
     useMemo<ResumoBanco[]>(() => {
       const mapa = new Map<string, ResumoBanco>();
@@ -1249,6 +1309,9 @@ function App() {
           entradas: 0,
           saidas: 0,
           saidasPessoais: 0,
+          investimentos: 0,
+          aportesInvestimentos: 0,
+          resgatesInvestimentos: 0,
           saldo: 0,
           quantidade: 0,
         };
@@ -1269,6 +1332,9 @@ function App() {
           entradas: 0,
           saidas: 0,
           saidasPessoais: 0,
+          investimentos: 0,
+          aportesInvestimentos: 0,
+          resgatesInvestimentos: 0,
           saldo: 0,
           quantidade: 0,
         };
@@ -1277,12 +1343,44 @@ function App() {
         atual.saldo = atual.entradas - atual.saidas - atual.saidasPessoais;
         mapa.set(grupo.chave, atual);
       });
+      investimentosBancos.forEach((investimento) => {
+        const grupo = agruparBancoOuCartao(investimento.banco);
+        const atual = mapa.get(grupo.chave) ?? {
+          chave: grupo.chave,
+          nome: grupo.nome,
+          entradas: 0,
+          saidas: 0,
+          saidasPessoais: 0,
+          investimentos: 0,
+          aportesInvestimentos: 0,
+          resgatesInvestimentos: 0,
+          saldo: 0,
+          quantidade: 0,
+        };
+        if (investimento.operacao === "Aporte") {
+          atual.aportesInvestimentos += investimento.valor;
+          atual.investimentos += investimento.valor;
+        } else if (investimento.operacao === "Resgate") {
+          atual.resgatesInvestimentos += investimento.valor;
+          atual.investimentos -= investimento.valor;
+        } else {
+          atual.investimentos += investimento.valor;
+        }
+        atual.quantidade += 1;
+        atual.saldo =
+          atual.entradas -
+          atual.saidas -
+          atual.saidasPessoais -
+          atual.aportesInvestimentos +
+          atual.resgatesInvestimentos;
+        mapa.set(grupo.chave, atual);
+      });
       return Array.from(mapa.values()).sort(
         (a, b) =>
-          b.entradas + b.saidas + b.saidasPessoais -
-          (a.entradas + a.saidas + a.saidasPessoais)
+          b.entradas + b.saidas + b.saidasPessoais + Math.abs(b.investimentos) -
+          (a.entradas + a.saidas + a.saidasPessoais + Math.abs(a.investimentos))
       );
-    }, [lancamentosBancos, despesasPessoaisBancos]);
+    }, [lancamentosBancos, despesasPessoaisBancos, investimentosBancos]);
 
   const movimentacoesBanco =
     useMemo(() => {
@@ -2622,6 +2720,8 @@ function App() {
 
     "Bancos",
 
+    "Investimentos",
+
     "Importar Excel",
 
     "Relatórios",
@@ -3119,6 +3219,16 @@ function App() {
                 valor={String(
                   lancamentosDashboard.length
                 )}
+              />
+
+              <Card
+                titulo="Investimentos no período"
+                valor={
+                  valoresDashboardOcultos
+                    ? "••••••"
+                    : moeda(patrimonioInvestidoDashboard)
+                }
+                corValor="#7c3aed"
               />
 
               <Card
@@ -3916,13 +4026,18 @@ function App() {
                           valor={moeda(banco.saidasPessoais)}
                         />
 
+                        <ResumoBancoLinha
+                          nome="Investimentos"
+                          valor={moeda(banco.investimentos)}
+                        />
+
                         <div
                           style={
                             estilos.saldoBanco
                           }
                         >
                           <span>
-                            Saldo
+                            Saldo disponível
                           </span>
 
                           <strong>
@@ -4269,6 +4384,10 @@ function App() {
 
         {pagina === "Despesas Pessoais" && (
           <DespesasPessoais />
+        )}
+
+        {pagina === "Investimentos" && (
+          <Investimentos usuarioAtual={usuarioAtual} />
         )}
 
         {pagina ===
