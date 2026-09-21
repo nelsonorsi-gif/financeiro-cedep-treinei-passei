@@ -6,6 +6,7 @@ import {
 import { supabase } from "./lib/supabase";
 import { CHAVE_CADASTROS, type Parceiro } from "./Cadastros";
 import { CHAVE_CATEGORIAS_PESSOAIS, CHAVE_PAGAMENTOS_PESSOAIS } from "./DespesasPessoais";
+import { registrarInvestimentoAutomatico, type Investimento } from "./Investimentos";
 
 export type PagamentoCompromisso = {
   id: string;
@@ -51,6 +52,16 @@ type Ocorrencia = {
   observacao: string;
 };
 
+const PREFIXO_INVESTIMENTO = "INVESTIMENTO::";
+const codificarDestinoInvestimento = (tipo: string, carteira: string, banco: string) =>
+  [PREFIXO_INVESTIMENTO.slice(0, -2), tipo.trim(), carteira.trim(), banco.trim()].join("::");
+const lerDestinoInvestimento = (categoria: string) => {
+  if (!categoria.startsWith(PREFIXO_INVESTIMENTO)) return null;
+  const [, tipo = "Outros", carteira = "Investimento", banco = ""] = categoria.split("::");
+  return { tipo, carteira, banco };
+};
+const ehInvestimento = (categoria: string) => Boolean(lerDestinoInvestimento(categoria));
+
 const CHAVE_PESSOAIS = "financeiro-cedep-despesas-pessoais";
 const categoriasPessoaisPadrao = ["Alimentação","Casa","Educação","Lazer","Saúde","Transporte","Vestuário","Outros"];
 const pagamentosPessoaisPadrao = ["Dinheiro","Cartão de crédito à vista","Cartão de débito","Cartão parcelado"];
@@ -90,7 +101,9 @@ function atualizarEspelhoPessoal(ocorrencias: Ocorrencia[]) {
     const existentes = JSON.parse(localStorage.getItem(CHAVE_PESSOAIS) ?? "[]");
     avulsas = Array.isArray(existentes) ? existentes.filter((item) => Boolean(item) && typeof item === "object" && "origem" in item && item.origem === "avulsa") : [];
   } catch { avulsas = []; }
-  const recorrentes = ocorrencias.filter((item) => item.escopo === "Pessoal").map((item) => ({
+  const recorrentes = ocorrencias
+    .filter((item) => item.escopo === "Pessoal" && !ehInvestimento(item.categoria))
+    .map((item) => ({
     id: item.id, competencia: item.competencia.slice(0,7).split("-").reverse().join("/"), descricao: item.descricao,
     valorPrevisto: Number(item.valor_previsto), valorPago: Number(item.valor_pago), status: item.status,
     vencimento: item.vencimento, categoria: item.categoria, formaPagamento: item.banco, observacao: item.observacao, origem: "recorrente" as const,
@@ -116,7 +129,10 @@ export default function CompromissosMensais({
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [competencia, setCompetencia] = useState(competenciaAtual());
   const [descricao, setDescricao] = useState("");
-  const [escopo, setEscopo] = useState<"Empresarial" | "Pessoal">("Empresarial");
+  const [escopo, setEscopo] = useState<"Empresarial" | "Pessoal" | "Investimento">("Empresarial");
+  const [tipoInvestimento, setTipoInvestimento] = useState("Previdência privada");
+  const [carteiraInvestimento, setCarteiraInvestimento] = useState("");
+  const [bancoInvestimento, setBancoInvestimento] = useState("");
   const [beneficiario, setBeneficiario] = useState("");
   const [categoria, setCategoria] = useState("");
   const [valor, setValor] = useState("");
@@ -126,6 +142,7 @@ export default function CompromissosMensais({
   const [pagamentoEmAndamento, setPagamentoEmAndamento] = useState<Ocorrencia | null>(null);
   const [valorPagamento, setValorPagamento] = useState("");
   const [formaPagamentoBaixa, setFormaPagamentoBaixa] = useState("");
+  const [liquidarDiferenca, setLiquidarDiferenca] = useState(false);
   const [unidade, setUnidade] = useState("CEDEP");
   const [compromissoEditando, setCompromissoEditando] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
@@ -236,6 +253,9 @@ export default function CompromissosMensais({
   const limparFormulario = () => {
     setDescricao("");
     setEscopo("Empresarial");
+    setTipoInvestimento("Previdência privada");
+    setCarteiraInvestimento("");
+    setBancoInvestimento("");
     setBeneficiario("");
     setCategoria("");
     setValor("");
@@ -261,17 +281,25 @@ export default function CompromissosMensais({
       alert("Informe categoria e forma de pagamento da despesa pessoal.");
       return;
     }
+    if (escopo === "Investimento" && (!tipoInvestimento || !carteiraInvestimento.trim() || !bancoInvestimento.trim() || !banco.trim())) {
+      alert("Informe tipo, carteira ou titular, banco do investimento e conta usada no pagamento.");
+      return;
+    }
     const estavaEditando = Boolean(compromissoEditando);
+    const escopoPersistido = escopo === "Investimento" ? "Pessoal" : escopo;
+    const categoriaPersistida = escopo === "Investimento"
+      ? codificarDestinoInvestimento(tipoInvestimento, carteiraInvestimento, bancoInvestimento)
+      : categoria.trim();
     const dados = {
       descricao: descricao.trim(),
-      escopo,
+      escopo: escopoPersistido,
       beneficiario: beneficiario.trim(),
-      categoria: categoria.trim(),
+      categoria: categoriaPersistida,
       valor_padrao: valorNumerico,
       dia_vencimento: Math.max(1, Math.min(31, Number(dia))),
       numero_parcelas: quantidadeParcelas,
       banco: banco.trim(),
-      unidade: escopo === "Pessoal" ? "" : unidade.trim() || configuracoes.unidades[0] || "CEDEP",
+      unidade: escopoPersistido === "Pessoal" ? "" : unidade.trim() || configuracoes.unidades[0] || "CEDEP",
       atualizado_em: new Date().toISOString(),
     };
     const resultado = compromissoEditando
@@ -390,18 +418,24 @@ export default function CompromissosMensais({
     alert(
       estavaEditando
         ? "Compromisso recorrente atualizado. O novo valor foi mantido na lista atual pendente e será usado nos próximos meses."
-        : compromissoSalvo.escopo === "Pessoal"
-          ? "Compromisso salvo e despesa pessoal do mês criada."
-          : "Compromisso mensal salvo."
+        : ehInvestimento(compromissoSalvo.categoria)
+          ? "Compromisso de investimento salvo. Ao dar baixa, o aporte será registrado automaticamente."
+          : compromissoSalvo.escopo === "Pessoal"
+            ? "Compromisso salvo e despesa pessoal do mês criada."
+            : "Compromisso mensal salvo."
     );
   };
 
   const editarCompromisso = (item: Compromisso) => {
     setCompromissoEditando(item.id);
     setDescricao(item.descricao);
-    setEscopo(item.escopo);
+    const destinoInvestimento = lerDestinoInvestimento(item.categoria);
+    setEscopo(destinoInvestimento ? "Investimento" : item.escopo);
+    setTipoInvestimento(destinoInvestimento?.tipo || "Previdência privada");
+    setCarteiraInvestimento(destinoInvestimento?.carteira || "");
+    setBancoInvestimento(destinoInvestimento?.banco || "");
     setBeneficiario(item.beneficiario);
-    setCategoria(item.categoria);
+    setCategoria(destinoInvestimento ? "" : item.categoria);
     setValor(String(item.valor_padrao).replace(".", ","));
     setDia(String(item.dia_vencimento));
     setNumeroParcelas(item.numero_parcelas ? String(item.numero_parcelas) : "");
@@ -515,6 +549,7 @@ export default function CompromissosMensais({
     setPagamentoEmAndamento(item);
     setValorPagamento(String(item.valor_previsto - item.valor_pago).replace(".", ","));
     setFormaPagamentoBaixa(item.banco || "");
+    setLiquidarDiferenca(false);
   };
 
   useEffect(() => {
@@ -524,6 +559,7 @@ export default function CompromissosMensais({
     setPagamentoEmAndamento(item);
     setValorPagamento(String(item.valor_previsto - item.valor_pago).replace(".", ","));
     setFormaPagamentoBaixa(item.banco || "");
+    setLiquidarDiferenca(false);
     onConsumirOcorrenciaInicial?.();
   }, [ocorrenciaInicialId, ocorrencias, onConsumirOcorrenciaInicial]);
 
@@ -531,6 +567,7 @@ export default function CompromissosMensais({
     setPagamentoEmAndamento(null);
     setValorPagamento("");
     setFormaPagamentoBaixa("");
+    setLiquidarDiferenca(false);
   };
 
   const pagar = async () => {
@@ -548,7 +585,7 @@ export default function CompromissosMensais({
     const formaSelecionada = formaPagamentoBaixa.trim();
     const totalPago = item.valor_pago + pagamento;
     const valorPrevistoAtualizado = Math.max(item.valor_previsto, totalPago);
-    const concluido = totalPago >= valorPrevistoAtualizado;
+    const concluido = liquidarDiferenca || totalPago >= valorPrevistoAtualizado;
     const dataPagamento = new Date().toISOString().slice(0, 10);
     const { error } = await supabase
       .from("ocorrencias_mensais")
@@ -564,6 +601,26 @@ export default function CompromissosMensais({
     if (error) {
       alert(error.message);
       return;
+    }
+
+    const destinoInvestimento = lerDestinoInvestimento(item.categoria);
+    if (destinoInvestimento) {
+      const agora = new Date().toISOString();
+      const registro: Investimento = {
+        id: `investimento-recorrente-${item.id}-${Date.now()}`,
+        data: dataPagamento,
+        competencia: dataPagamento.slice(0, 7).split("-").reverse().join("/"),
+        tipo: destinoInvestimento.tipo,
+        banco: destinoInvestimento.banco || formaSelecionada,
+        carteira: destinoInvestimento.carteira,
+        operacao: "Aporte",
+        descricao: item.descricao,
+        valor: pagamento,
+        usuarioId: usuarioAtual.id,
+        usuarioNome: usuarioAtual.nome,
+        criadoEm: agora,
+      };
+      registrarInvestimentoAutomatico(registro);
     }
 
     if (item.escopo === "Empresarial") {
@@ -605,7 +662,7 @@ export default function CompromissosMensais({
     const termo = busca.trim().toLowerCase();
     return ocorrencias.filter(
       (item) =>
-        (filtro === "Todos" || item.escopo === filtro || item.status === filtro) &&
+        (filtro === "Todos" || item.escopo === filtro || item.status === filtro || (filtro === "Investimento" && ehInvestimento(item.categoria))) &&
         (filtroCategoria === "Todas" || item.categoria === filtroCategoria) &&
         (filtroBeneficiario === "Todos" ||
           item.beneficiario === filtroBeneficiario) &&
@@ -632,11 +689,14 @@ export default function CompromissosMensais({
     .filter((item) => item.escopo === "Empresarial" && item.status !== "Dispensado")
     .reduce((total, item) => total + Number(item.valor_previsto), 0);
   const pessoalPrevisto = ocorrencias
-    .filter((item) => item.escopo === "Pessoal" && item.status !== "Dispensado")
+    .filter((item) => item.escopo === "Pessoal" && !ehInvestimento(item.categoria) && item.status !== "Dispensado")
+    .reduce((total, item) => total + Number(item.valor_previsto), 0);
+  const investimentosPrevistos = ocorrencias
+    .filter((item) => ehInvestimento(item.categoria) && item.status !== "Dispensado")
     .reduce((total, item) => total + Number(item.valor_previsto), 0);
   const totalPago = ocorrencias.reduce((total, item) => total + Number(item.valor_pago), 0);
   const pendente = ocorrencias
-    .filter((item) => item.status !== "Dispensado")
+    .filter((item) => item.status !== "Dispensado" && item.status !== "Pago")
     .reduce((total, item) => total + Math.max(0, Number(item.valor_previsto) - Number(item.valor_pago)), 0);
 
   const formasPagamentoDisponiveis = Array.from(
@@ -664,6 +724,7 @@ export default function CompromissosMensais({
       <section style={estilos.cards}>
         <Card titulo="Contas empresariais" valor={moeda(empresarialPrevisto)} />
         <Card titulo="Despesas pessoais" valor={moeda(pessoalPrevisto)} />
+        <Card titulo="Investimentos programados" valor={moeda(investimentosPrevistos)} />
         <Card titulo="Total pago" valor={moeda(totalPago)} />
         <Card titulo="Ainda pendente" valor={moeda(pendente)} />
       </section>
@@ -675,12 +736,13 @@ export default function CompromissosMensais({
           <label style={estilos.campo}>
             <strong>Grupo</strong>
             <select style={estilos.input} value={escopo} onChange={(e) => {
-              setEscopo(e.target.value as "Empresarial" | "Pessoal");
+              setEscopo(e.target.value as "Empresarial" | "Pessoal" | "Investimento");
               setCategoria("");
               setBanco("");
             }}>
               <option>Empresarial</option>
               {usuarioAtual.perfil !== "Secretaria" && <option>Pessoal</option>}
+              {usuarioAtual.perfil === "Administrador" && <option>Investimento</option>}
             </select>
           </label>
           {escopo === "Pessoal" && (
@@ -688,9 +750,25 @@ export default function CompromissosMensais({
               Este compromisso ser&aacute; exibido somente em Despesas Pessoais e n&atilde;o ser&aacute; enviado ao Contas a Pagar nem ao caixa da escola.
             </div>
           )}
-          <CampoComLista label={escopo === "Pessoal" ? "Favorecido (opcional)" : "Funcionário / favorecido"} value={beneficiario} onChange={setBeneficiario} opcoes={funcionarios.map((item) => item.nome)} listaId="funcionarios-compromissos" placeholder="Digite ou selecione um funcionário" />
+          {escopo === "Investimento" && (
+            <div style={estilos.avisoInvestimento}>
+              Ao dar baixa, o valor ser&aacute; registrado automaticamente como aporte no m&oacute;dulo Investimentos.
+            </div>
+          )}
+          <CampoComLista label={escopo === "Pessoal" ? "Favorecido (opcional)" : escopo === "Investimento" ? "Instituição / favorecido (opcional)" : "Funcionário / favorecido"} value={beneficiario} onChange={setBeneficiario} opcoes={funcionarios.map((item) => item.nome)} listaId="funcionarios-compromissos" placeholder="Digite ou selecione um funcionário" />
           {escopo === "Pessoal" ? (
             <CampoComLista label="Categoria" value={categoria} onChange={setCategoria} opcoes={categoriasPessoais} listaId="categorias-pessoais-compromissos" placeholder="Digite ou selecione" />
+          ) : escopo === "Investimento" ? (
+            <>
+              <label style={estilos.campo}>
+                <strong>Tipo de investimento</strong>
+                <select style={estilos.input} value={tipoInvestimento} onChange={(e) => setTipoInvestimento(e.target.value)}>
+                  <option>Previdência privada</option><option>Consórcio</option><option>CDB</option><option>Poupança</option><option>Outros</option>
+                </select>
+              </label>
+              <Campo label="Carteira / titular" value={carteiraInvestimento} onChange={setCarteiraInvestimento} placeholder="Ex.: Nelson, Camila ou Consórcio veículo" />
+              <CampoComLista label="Banco do investimento" value={bancoInvestimento} onChange={setBancoInvestimento} opcoes={configuracoes.bancos} listaId="bancos-investimentos-compromissos" placeholder="Digite ou selecione" />
+            </>
           ) : (
             <label style={estilos.campo}>
               <strong>Tipo de saída</strong>
@@ -703,7 +781,7 @@ export default function CompromissosMensais({
           <Campo label="Valor padrão" value={valor} onChange={setValor} placeholder="Ex.: 1.500,00" />
           <Campo label="Dia do vencimento" type="number" value={dia} onChange={setDia} />
           <Campo label="Número de parcelas (opcional)" type="number" value={numeroParcelas} onChange={setNumeroParcelas} placeholder="Ex.: 12" />
-          {escopo === "Pessoal" ? (
+          {escopo !== "Empresarial" ? (
             <CampoComLista label="Forma de pagamento" value={banco} onChange={setBanco} opcoes={Array.from(new Set([...pagamentosPessoaisPadrao, ...configuracoes.bancos, ...pagamentosPessoais]))} listaId="pagamentos-pessoais-compromissos" placeholder="Digite ou selecione" />
           ) : (
             <>
@@ -736,7 +814,7 @@ export default function CompromissosMensais({
               <div>
                 <strong>{item.descricao}</strong>
                 <div style={estilos.textoCinza}>
-                  {item.escopo} • dia {item.dia_vencimento} • {moeda(Number(item.valor_padrao))}
+                  {ehInvestimento(item.categoria) ? `Investimento • ${lerDestinoInvestimento(item.categoria)?.tipo} • ${lerDestinoInvestimento(item.categoria)?.carteira}` : item.escopo} • dia {item.dia_vencimento} • {moeda(Number(item.valor_padrao))}
                   {item.numero_parcelas ? ` • ${item.numero_parcelas} parcela(s)` : " • sem limite"}
                   {item.beneficiario ? ` • ${item.beneficiario}` : ""}
                 </div>
@@ -797,7 +875,7 @@ export default function CompromissosMensais({
                 <tr key={item.id}>
                   <td style={estilos.td}>{item.vencimento.split("-").reverse().join("/")}</td>
                   <td style={estilos.td}><strong>{item.descricao}</strong><div>{item.beneficiario}</div>{(() => { const modelo = compromissos.find((compromisso) => compromisso.id === item.compromisso_id); return modelo?.numero_parcelas ? <small style={estilos.parcela}>Parcela {numeroDaParcela(modelo.inicio, item.competencia)}/{modelo.numero_parcelas}</small> : null; })()}</td>
-                  <td style={estilos.td}>{item.escopo}</td>
+                  <td style={estilos.td}>{ehInvestimento(item.categoria) ? `Investimento • ${lerDestinoInvestimento(item.categoria)?.carteira}` : item.escopo}</td>
                   <td style={estilos.td}>{moeda(Number(item.valor_previsto))}</td>
                   <td style={estilos.td}>{moeda(Number(item.valor_pago))}</td>
                   <td style={estilos.td}><span style={estilos.status}>{item.status}</span></td>
@@ -835,6 +913,10 @@ export default function CompromissosMensais({
                 placeholder="Digite ou selecione"
               />
             </div>
+            <label style={estilos.liquidarDiferenca}>
+              <input type="checkbox" checked={liquidarDiferenca} onChange={(e) => setLiquidarDiferenca(e.target.checked)} />
+              <span><strong>Liquidar esta competência</strong><br /><small>Marque para considerar pago mesmo quando o valor informado for diferente do previsto, sem criar saldo parcial.</small></span>
+            </label>
             <div style={estilos.acoes}>
               <button type="button" style={estilos.botaoPagar} onClick={() => void pagar()}>
                 Confirmar pagamento
