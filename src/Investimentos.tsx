@@ -13,6 +13,7 @@ export type Investimento = {
   competencia: string;
   tipo: string;
   banco: string;
+  carteira?: string;
   operacao: OperacaoInvestimento;
   descricao: string;
   valor: number;
@@ -62,10 +63,20 @@ const salvarInvestimentos = (itens: Investimento[]) => {
   window.dispatchEvent(new CustomEvent(EVENTO_INVESTIMENTOS));
 };
 
+export const registrarInvestimentoAutomatico = (registro: Investimento) => {
+  const atuais = carregarInvestimentos();
+  const atualizados = [
+    ...atuais.filter((item) => item.id !== registro.id),
+    registro,
+  ];
+  salvarInvestimentos(atualizados);
+};
+
 type Formulario = {
   data: string;
   tipo: string;
   banco: string;
+  carteira: string;
   operacao: OperacaoInvestimento;
   descricao: string;
   valor: string;
@@ -75,6 +86,7 @@ const formularioVazio = (): Formulario => ({
   data: hoje(),
   tipo: "CDB",
   banco: "",
+  carteira: "",
   operacao: "Aporte",
   descricao: "",
   valor: "",
@@ -155,13 +167,43 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
   const rendimentosPeriodo = somar(filtrados, "Rendimento");
   const totalInvestido = somar(itens, "Aporte") + somar(itens, "Rendimento") - somar(itens, "Resgate");
 
+  const carteiras = useMemo(() => {
+    const mapa = new Map<string, { chave: string; nome: string; tipo: string; banco: string; acumulado: number; periodo: number }>();
+    const itensDaCarteira = itens.filter(
+      (item) =>
+        (tipo === "Todos" || item.tipo === tipo) &&
+        (banco === "Todos" || item.banco === banco)
+    );
+    itensDaCarteira.forEach((item) => {
+      const nome = item.carteira?.trim() || item.descricao?.trim() || item.tipo;
+      const chave = [item.tipo, item.banco, nome].join("::");
+      const atual = mapa.get(chave) || {
+        chave,
+        nome,
+        tipo: item.tipo,
+        banco: item.banco,
+        acumulado: 0,
+        periodo: 0,
+      };
+      const impacto = item.operacao === "Resgate" ? -item.valor : item.valor;
+      atual.acumulado += impacto;
+      if (competencia === "Todas" || item.competencia === competencia) {
+        atual.periodo += impacto;
+      }
+      mapa.set(chave, atual);
+    });
+    return Array.from(mapa.values()).sort(
+      (a, b) => b.acumulado - a.acumulado || a.nome.localeCompare(b.nome, "pt-BR")
+    );
+  }, [itens, competencia, tipo, banco]);
+
   const atualizarCampo = <K extends keyof Formulario>(campo: K, valor: Formulario[K]) =>
     setFormulario((atual) => ({ ...atual, [campo]: valor }));
 
   const salvar = () => {
     const valor = numero(formulario.valor);
-    if (!formulario.data || !formulario.tipo || !formulario.banco || valor <= 0) {
-      alert("Preencha data, tipo de investimento, banco e um valor válido.");
+    if (!formulario.data || !formulario.tipo || !formulario.banco || !formulario.carteira.trim() || valor <= 0) {
+      alert("Preencha data, tipo, banco, nome da carteira ou titular e um valor válido.");
       return;
     }
     const agora = new Date().toISOString();
@@ -172,6 +214,7 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
       competencia: competenciaDaData(formulario.data),
       tipo: formulario.tipo,
       banco: formulario.banco,
+      carteira: formulario.carteira.trim(),
       operacao: formulario.operacao,
       descricao: formulario.descricao.trim(),
       valor,
@@ -196,6 +239,7 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
       data: item.data,
       tipo: item.tipo,
       banco: item.banco,
+      carteira: item.carteira || item.descricao || item.tipo,
       operacao: item.operacao,
       descricao: item.descricao,
       valor: item.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
@@ -235,6 +279,7 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
           <label style={estilos.campo}><strong>Operação</strong><select value={formulario.operacao} onChange={(e) => atualizarCampo("operacao", e.target.value as OperacaoInvestimento)} style={estilos.input}><option>Aporte</option><option>Resgate</option><option>Rendimento</option></select></label>
           <label style={estilos.campo}><strong>Tipo</strong><select value={formulario.tipo} onChange={(e) => atualizarCampo("tipo", e.target.value)} style={estilos.input}>{tipos.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label style={estilos.campo}><strong>Banco</strong><select value={formulario.banco} onChange={(e) => atualizarCampo("banco", e.target.value)} style={estilos.input}><option value="">Selecione...</option>{bancos.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label style={estilos.campo}><strong>Carteira / titular</strong><input value={formulario.carteira} onChange={(e) => atualizarCampo("carteira", e.target.value)} placeholder="Ex.: Nelson, Camila ou Consórcio veículo" style={estilos.input} /></label>
           <label style={estilos.campo}><strong>Valor</strong><input value={formulario.valor} onChange={(e) => atualizarCampo("valor", e.target.value)} placeholder="Ex.: 500,00" style={estilos.input} /></label>
           <label style={{ ...estilos.campo, gridColumn: "span 2" }}><strong>Descrição opcional</strong><input value={formulario.descricao} onChange={(e) => atualizarCampo("descricao", e.target.value)} placeholder="Ex.: aporte mensal ou identificação do plano" style={estilos.input} /></label>
         </div>
@@ -253,6 +298,38 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
 
       <section style={estilos.caixa}>
         <div style={estilos.topoLista}>
+          <div>
+            <h2 style={{ margin: 0 }}>Carteiras e titulares</h2>
+            <p style={estilos.legenda}>Valor de {competencia === "Todas" ? "todo o período" : competencia} e acumulado de cada investimento.</p>
+          </div>
+        </div>
+        {carteiras.length === 0 ? (
+          <div style={estilos.vazio}>Nenhuma carteira cadastrada.</div>
+        ) : (
+          <div style={estilos.carteiras}>
+            {carteiras.map((carteira) => (
+              <article key={carteira.chave} style={estilos.carteira}>
+                <div style={estilos.iconeCarteira}>{carteira.tipo === "Previdência privada" ? "🛡️" : carteira.tipo === "Consórcio" ? "📄" : carteira.tipo === "Poupança" ? "🐷" : "📈"}</div>
+                <div>
+                  <strong style={estilos.nomeCarteira}>{carteira.nome}</strong>
+                  <div style={estilos.detalheCarteira}>{carteira.tipo} • {carteira.banco}</div>
+                </div>
+                <div style={estilos.valorCarteira}>
+                  <small>{competencia === "Todas" ? "Movimentado" : "No mês"}</small>
+                  <strong>{moeda(carteira.periodo)}</strong>
+                </div>
+                <div style={estilos.acumuladoCarteira}>
+                  <small>Acumulado</small>
+                  <strong>{moeda(carteira.acumulado)}</strong>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section style={estilos.caixa}>
+        <div style={estilos.topoLista}>
           <div><h2 style={{ margin: 0 }}>Movimentações</h2><p style={estilos.legenda}>{filtrados.length} registro(s) encontrado(s).</p></div>
           <div style={estilos.filtros}>
             <select value={competencia} onChange={(e) => setCompetencia(e.target.value)} style={estilos.input}><option>Todas</option>{competencias.map((item) => <option key={item}>{item}</option>)}</select>
@@ -261,8 +338,8 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
           </div>
         </div>
         {filtrados.length === 0 ? <div style={estilos.vazio}>Nenhuma movimentação de investimento encontrada.</div> : (
-          <div style={estilos.tabelaContainer}><table style={estilos.tabela}><thead><tr><th>Data</th><th>Competência</th><th>Operação</th><th>Tipo</th><th>Banco</th><th>Descrição</th><th>Valor</th><th>Ações</th></tr></thead><tbody>
-            {filtrados.map((item) => <tr key={item.id}><td>{item.data.split("-").reverse().join("/")}</td><td>{item.competencia}</td><td><span style={{ ...estilos.badge, background: item.operacao === "Aporte" ? "#dbeafe" : item.operacao === "Resgate" ? "#fee2e2" : "#dcfce7", color: item.operacao === "Aporte" ? "#1d4ed8" : item.operacao === "Resgate" ? "#b91c1c" : "#166534" }}>{item.operacao}</span></td><td>{item.tipo}</td><td>{item.banco}</td><td>{item.descricao || "—"}</td><td><strong>{moeda(item.valor)}</strong></td><td><div style={estilos.acoesTabela}><button type="button" onClick={() => editar(item)} style={estilos.botaoEditar}>Editar</button><button type="button" onClick={() => excluir(item)} style={estilos.botaoExcluir}>Excluir</button></div></td></tr>)}
+          <div style={estilos.tabelaContainer}><table style={estilos.tabela}><thead><tr><th>Data</th><th>Competência</th><th>Operação</th><th>Tipo</th><th>Banco</th><th>Carteira / titular</th><th>Descrição</th><th>Valor</th><th>Ações</th></tr></thead><tbody>
+            {filtrados.map((item) => <tr key={item.id}><td>{item.data.split("-").reverse().join("/")}</td><td>{item.competencia}</td><td><span style={{ ...estilos.badge, background: item.operacao === "Aporte" ? "#dbeafe" : item.operacao === "Resgate" ? "#fee2e2" : "#dcfce7", color: item.operacao === "Aporte" ? "#1d4ed8" : item.operacao === "Resgate" ? "#b91c1c" : "#166534" }}>{item.operacao}</span></td><td>{item.tipo}</td><td>{item.banco}</td><td><strong>{item.carteira || item.descricao || item.tipo}</strong></td><td>{item.descricao || "—"}</td><td><strong>{moeda(item.valor)}</strong></td><td><div style={estilos.acoesTabela}><button type="button" onClick={() => editar(item)} style={estilos.botaoEditar}>Editar</button><button type="button" onClick={() => excluir(item)} style={estilos.botaoExcluir}>Excluir</button></div></td></tr>)}
           </tbody></table></div>
         )}
       </section>
@@ -292,6 +369,13 @@ const estilos: Record<string, CSSProperties> = {
   card: { display: "grid", gap: 8, padding: 18, borderRadius: 13, background: "white", border: "1px solid #dce3ed" },
   topoLista: { display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 17 },
   filtros: { display: "flex", gap: 9, flexWrap: "wrap" },
+  carteiras: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 13 },
+  carteira: { display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 12, padding: 16, borderRadius: 13, border: "1px solid #dce3ed", background: "linear-gradient(145deg,#fff,#f8fafc)" },
+  iconeCarteira: { gridRow: "span 2", display: "grid", placeItems: "center", width: 42, height: 42, borderRadius: 12, background: "#eef2ff", fontSize: 21 },
+  nomeCarteira: { color: "#15233d", fontSize: 17 },
+  detalheCarteira: { marginTop: 4, color: "#64748b", fontSize: 12 },
+  valorCarteira: { display: "grid", gap: 3, paddingTop: 8, borderTop: "1px solid #e2e8f0", color: "#2563eb" },
+  acumuladoCarteira: { display: "grid", gap: 3, paddingTop: 8, borderTop: "1px solid #e2e8f0", textAlign: "right", color: "#15803d" },
   vazio: { padding: 20, borderRadius: 10, color: "#64748b", background: "#f8fafc" },
   tabelaContainer: { overflowX: "auto" },
   tabela: { width: "100%", borderCollapse: "collapse" },
