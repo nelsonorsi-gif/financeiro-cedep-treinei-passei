@@ -225,7 +225,9 @@ export default function DespesasPessoais() {
 
   const total = filtradas.filter((item) => item.status !== "Dispensado").reduce((soma, item) => soma + Number(item.valorPrevisto), 0);
   const pago = filtradas.reduce((soma, item) => soma + Number(item.valorPago), 0);
-  const pendente = Math.max(0, total - pago);
+  const pendente = filtradas
+    .filter((item) => item.status === "Pendente" || item.status === "Parcial")
+    .reduce((soma, item) => soma + Math.max(0, Number(item.valorPrevisto) - Number(item.valorPago)), 0);
 
   return (
     <div>
