@@ -50,6 +50,8 @@ type LancamentoLocal = {
   saida: number;
   unidade: string;
   formaPagamento: string;
+  estornadoEm?: string;
+  estornoDeId?: string;
 };
 
 const moeda = (valor: number) =>
@@ -151,6 +153,8 @@ export default function GestaoFinanceira({
       () =>
         lancamentos.filter(
           (item) =>
+            !item.estornadoEm &&
+            !item.estornoDeId &&
             (!dataInicial ||
               item.data >=
                 dataInicial) &&
