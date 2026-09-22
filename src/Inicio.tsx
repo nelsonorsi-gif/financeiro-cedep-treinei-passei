@@ -26,6 +26,8 @@ type ContaDoDia = {
   valorPendente: number;
   formaPagamento: string;
   unidade: string;
+  vencimento: string;
+  faixa: "Vencida" | "Hoje" | "Amanhã";
 };
 type JustificativaFalta = {
   texto: string;
@@ -192,21 +194,32 @@ export default function Inicio({
       String(data.getDate()).padStart(2, "0"),
     ].join("-");
 
+    const amanhaData = new Date(data);
+    amanhaData.setDate(amanhaData.getDate() + 1);
+    const amanha = [
+      amanhaData.getFullYear(),
+      String(amanhaData.getMonth() + 1).padStart(2, "0"),
+      String(amanhaData.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    const classificarVencimento = (vencimento: string): ContaDoDia["faixa"] =>
+      vencimento < hoje ? "Vencida" : vencimento === hoje ? "Hoje" : "Amanhã";
+
     const carregarContasDoDia = async () => {
       setCarregandoContas(true);
       setErroContas("");
       const [empresariais, pessoais] = await Promise.all([
         cliente
           .from("contas_financeiras")
-          .select("id,descricao,valor_original,valor_pago,banco,unidade,status")
+          .select("id,descricao,valor_original,valor_pago,banco,unidade,status,vencimento")
           .eq("tipo", "pagar")
-          .eq("vencimento", hoje)
+          .lte("vencimento", amanha)
           .in("status", ["Pendente", "Parcial"]),
         cliente
           .from("ocorrencias_mensais")
-          .select("id,descricao,valor_previsto,valor_pago,banco,unidade,status")
+          .select("id,descricao,valor_previsto,valor_pago,banco,unidade,status,vencimento")
           .eq("escopo", "Pessoal")
-          .eq("vencimento", hoje)
+          .lte("vencimento", amanha)
           .in("status", ["Pendente", "Parcial"]),
       ]);
 
@@ -224,6 +237,8 @@ export default function Inicio({
         valorPendente: Math.max(0, Number(item.valor_original || 0) - Number(item.valor_pago || 0)),
         formaPagamento: String(item.banco || ""),
         unidade: String(item.unidade || ""),
+        vencimento: String(item.vencimento || ""),
+        faixa: classificarVencimento(String(item.vencimento || "")),
       }));
       const itensPessoais: ContaDoDia[] = (pessoais.data || []).map((item) => ({
         id: String(item.id),
@@ -232,11 +247,13 @@ export default function Inicio({
         valorPendente: Math.max(0, Number(item.valor_previsto || 0) - Number(item.valor_pago || 0)),
         formaPagamento: String(item.banco || ""),
         unidade: "Pessoal",
+        vencimento: String(item.vencimento || ""),
+        faixa: classificarVencimento(String(item.vencimento || "")),
       }));
 
       setContasDoDia([...itensEmpresariais, ...itensPessoais]
         .filter((item) => item.valorPendente > 0)
-        .sort((primeira, segunda) => primeira.descricao.localeCompare(segunda.descricao, "pt-BR")));
+        .sort((primeira, segunda) => primeira.vencimento.localeCompare(segunda.vencimento) || primeira.descricao.localeCompare(segunda.descricao, "pt-BR")));
       setCarregandoContas(false);
     };
 
@@ -470,28 +487,41 @@ export default function Inicio({
         <section style={estilos.vencimentos}>
           <div style={estilos.topo}>
             <div>
-              <h2 style={estilos.subtitulo}>Vencimentos de hoje</h2>
-              <p style={estilos.legenda}>Somente contas pendentes. Ao confirmar a baixa, o lembrete sai automaticamente.</p>
+              <h2 style={estilos.subtitulo}>Contas vencidas e próximos vencimentos</h2>
+              <p style={estilos.legenda}>Exibe contas vencidas, de hoje e de amanhã. Ao confirmar a baixa, o lembrete sai automaticamente.</p>
             </div>
             <span style={estilos.contadorVencimentos}>{contasDoDia.length} pendente(s)</span>
           </div>
 
           {carregandoContas && contasDoDia.length === 0 ? (
-            <div style={estilos.vazio}>Consultando contas de hoje...</div>
+            <div style={estilos.vazio}>Consultando vencimentos...</div>
           ) : erroContas ? (
             <div style={estilos.erroVencimentos}>{erroContas}</div>
           ) : contasDoDia.length === 0 ? (
-            <div style={estilos.semAvisos}>✅ Nenhuma conta pendente vence hoje.</div>
+            <div style={estilos.semAvisos}>✅ Nenhuma conta vencida ou com vencimento até amanhã.</div>
           ) : (
             <div style={estilos.listaVencimentos}>
               {contasDoDia.map((conta) => (
-                <article key={conta.origem + "-" + conta.id} style={estilos.contaDoDia}>
+                <article
+                  key={conta.origem + "-" + conta.id}
+                  style={{
+                    ...estilos.contaDoDia,
+                    ...(conta.faixa === "Vencida" ? estilos.contaVencida : conta.faixa === "Amanhã" ? estilos.contaAmanha : estilos.contaHoje),
+                  }}
+                >
                   <div style={estilos.dadosConta}>
-                    <span style={{ ...estilos.tipoConta, ...(conta.origem === "Pessoal" ? estilos.tipoPessoal : estilos.tipoEmpresarial) }}>
-                      {conta.origem}
-                    </span>
+                    <div style={estilos.identificadoresConta}>
+                      <span style={{ ...estilos.tipoConta, ...(conta.origem === "Pessoal" ? estilos.tipoPessoal : estilos.tipoEmpresarial) }}>
+                        {conta.origem}
+                      </span>
+                      <span style={{ ...estilos.faixaVencimento, ...(conta.faixa === "Vencida" ? estilos.faixaVencida : conta.faixa === "Amanhã" ? estilos.faixaAmanha : estilos.faixaHoje) }}>
+                        {conta.faixa}
+                      </span>
+                    </div>
                     <strong>{conta.descricao}</strong>
-                    <small style={estilos.data}>{[conta.formaPagamento, conta.unidade].filter(Boolean).join(" • ")}</small>
+                    <small style={estilos.data}>
+                      Vencimento: {conta.vencimento.split("-").reverse().join("/")} • {[conta.formaPagamento, conta.unidade].filter(Boolean).join(" • ")}
+                    </small>
                   </div>
                   <strong style={estilos.valorVencimento}>
                     {conta.valorPendente.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
@@ -637,6 +667,14 @@ const estilos: Record<string, CSSProperties> = {
   contadorVencimentos: { padding: "8px 12px", borderRadius: 999, background: "#fff7e0", color: "#854d0e", fontWeight: 800 },
   listaVencimentos: { display: "grid", gap: 10, marginTop: 18 },
   contaDoDia: { display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", alignItems: "center", gap: 16, padding: 14, borderRadius: 11, border: "1px solid #e2e8f0", background: "#f8fafc" },
+  contaVencida: { borderColor: "#fecaca", background: "#fff1f2" },
+  contaHoje: { borderColor: "#fde68a", background: "#fffbeb" },
+  contaAmanha: { borderColor: "#bfdbfe", background: "#eff6ff" },
+  identificadoresConta: { display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" },
+  faixaVencimento: { width: "fit-content", padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 900 },
+  faixaVencida: { color: "#991b1b", background: "#fee2e2" },
+  faixaHoje: { color: "#854d0e", background: "#fef3c7" },
+  faixaAmanha: { color: "#1e40af", background: "#dbeafe" },
   dadosConta: { minWidth: 0, display: "grid", gap: 5 },
   tipoConta: { width: "fit-content", padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 900 },
   tipoEmpresarial: { color: "#1e40af", background: "#dbeafe" },
