@@ -1079,6 +1079,9 @@ function App() {
     aportesInvestimentosDashboard +
     rendimentosInvestimentosDashboard -
     resgatesInvestimentosDashboard;
+  const investimentosLiquidosDashboard =
+    aportesInvestimentosDashboard -
+    resgatesInvestimentosDashboard;
 
   const saldoRealDashboard =
     saldoDashboard -
@@ -1104,6 +1107,19 @@ function App() {
         }))
         .sort((a, b) => a.unidade.localeCompare(b.unidade, "pt-BR"));
     }, [lancamentosDashboard]);
+
+  const totalResumoUnidadesDashboard = useMemo(
+    () =>
+      resumoUnidadesDashboard.reduce(
+        (total, item) => ({
+          entradas: total.entradas + item.entradas,
+          saidas: total.saidas + item.saidas,
+          saldo: total.saldo + item.saldo,
+        }),
+        { entradas: 0, saidas: 0, saldo: 0 }
+      ),
+    [resumoUnidadesDashboard]
+  );
 
   const fluxoDashboard =
     useMemo<PontoFluxo[]>(() => {
@@ -3307,6 +3323,14 @@ function App() {
                   }
                 />
                 <Resumo
+                  nome="Investimentos"
+                  valor={
+                    valoresDashboardOcultos
+                      ? "••••••"
+                      : moeda(investimentosLiquidosDashboard)
+                  }
+                />
+                <Resumo
                   nome="Resultado"
                   valor={
                     valoresDashboardOcultos
@@ -3353,6 +3377,20 @@ function App() {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr style={{ background: "#eef2f7", borderTop: "2px solid #101a2d" }}>
+                        <td style={estilos.td}><strong>Total geral</strong></td>
+                        <td style={{ ...estilos.td, color: "#2563eb", fontWeight: 800 }}>
+                          {valoresDashboardOcultos ? "••••••" : moeda(totalResumoUnidadesDashboard.entradas)}
+                        </td>
+                        <td style={{ ...estilos.td, color: "#dc2626", fontWeight: 800 }}>
+                          {valoresDashboardOcultos ? "••••••" : moeda(totalResumoUnidadesDashboard.saidas)}
+                        </td>
+                        <td style={{ ...estilos.td, color: totalResumoUnidadesDashboard.saldo >= 0 ? "#2563eb" : "#dc2626", fontWeight: 800 }}>
+                          {valoresDashboardOcultos ? "••••••" : moeda(totalResumoUnidadesDashboard.saldo)}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}
