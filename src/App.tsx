@@ -477,6 +477,17 @@ const agruparBancoOuCartao = (valor: string) => {
 };
 
 function App() {
+  const recarregarUmaVezAposSincronizacao = () => {
+    const chave = "financeiro-cedep-recarga-sincronizacao";
+    if (sessionStorage.getItem(chave) === "realizada") {
+      sessionStorage.removeItem(chave);
+      return false;
+    }
+    sessionStorage.setItem(chave, "realizada");
+    window.location.reload();
+    return true;
+  };
+
   const [
     usuarioAtual,
     setUsuarioAtual,
@@ -548,8 +559,7 @@ function App() {
                 online.perfil
               );
 
-            if (alterou) {
-              window.location.reload();
+            if (alterou && recarregarUmaVezAposSincronizacao()) {
               return;
             }
           }
@@ -874,7 +884,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!carregado) return;
+    if (!carregado || !usuarioAtual) return;
 
     let ativo = true;
     const conciliarRecebimentos = async () => {
@@ -942,10 +952,10 @@ function App() {
       ativo = false;
       window.removeEventListener("financeiro-contas-atualizadas", conciliarRecebimentos);
     };
-  }, [carregado]);
+  }, [carregado, usuarioAtual]);
 
   useEffect(() => {
-    if (!carregado) return;
+    if (!carregado || !usuarioAtual) return;
 
     const conciliarCaixaLocal = () => {
       try {
@@ -965,7 +975,7 @@ function App() {
     window.addEventListener(EVENTO_CAIXA_ATUALIZADO, conciliarCaixaLocal);
     return () =>
       window.removeEventListener(EVENTO_CAIXA_ATUALIZADO, conciliarCaixaLocal);
-  }, [carregado]);
+  }, [carregado, usuarioAtual]);
 
   /* =======================================================
      SALVAMENTO AUTOMÁTICO
@@ -2944,8 +2954,7 @@ function App() {
             usuario.perfil
           );
 
-        if (alterou) {
-          window.location.reload();
+        if (alterou && recarregarUmaVezAposSincronizacao()) {
           return;
         }
       }
