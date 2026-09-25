@@ -172,24 +172,26 @@ export async function registrarBaixaEstruturada({
   const banco = cliente();
   if (!banco) return;
 
-  const { error: erroBaixa } =
-    await banco
-      .from("baixas_financeiras")
-      .insert({
-        conta_id: conta.id,
-        valor,
-        data_pagamento: dataPagamento,
-        banco: bancoPagamento,
-        forma_pagamento: formaPagamento,
-        observacao,
-        recebido_por: usuarioId,
-      });
-  if (erroBaixa) throw erroBaixa;
-
-  await salvarContaEstruturada(
-    conta,
-    usuarioId
+  const { error } = await banco.rpc(
+    "registrar_baixa_financeira_atomica",
+    {
+      p_conta_id: conta.id,
+      p_valor: valor,
+      p_data_pagamento: dataPagamento,
+      p_banco: bancoPagamento,
+      p_forma_pagamento: formaPagamento,
+      p_observacao: observacao,
+      p_usuario_id: usuarioId,
+      p_valor_pago_total: conta.valorPago ?? 0,
+      p_status: conta.status,
+      p_data_baixa: conta.dataBaixa ?? dataPagamento,
+      p_juros: conta.juros ?? 0,
+      p_multa: conta.multa ?? 0,
+      p_desconto: conta.desconto ?? 0,
+      p_observacao_conta: conta.observacao ?? "",
+    }
   );
+  if (error) throw error;
 }
 
 export async function registrarEstornoBaixaEstruturada({
