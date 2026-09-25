@@ -52,7 +52,14 @@ import {
   iniciarSincronizacaoAutomatica,
   prepararSincronizacaoInicial,
 } from "./servicos/sincronizacaoAutomatica";
-import { mensagemCaixaFechado, registrarMovimentoCaixa, usuarioPodeMovimentar } from "./servicos/caixaOperacional";
+import {
+  CHAVE_CAIXA,
+  EVENTO_CAIXA_ATUALIZADO,
+  mensagemCaixaFechado,
+  registrarMovimentoCaixa,
+  usuarioPodeMovimentar,
+  type SessaoCaixaOperacional,
+} from "./servicos/caixaOperacional";
 import { calcularTaxaCartao } from "./servicos/taxasCartao";
 import {
   carregarContasEstruturadas,
@@ -232,6 +239,130 @@ const diaDaData = (
   return (
     data.split("-")[2] || ""
   );
+};
+
+const dataLocalDoMovimento = (dataHora: string) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(dataHora));
+
+const reconciliarMovimentosDoCaixa = (
+  atuais: Lancamento[],
+  sessoes: SessaoCaixaOperacional[]
+) => {
+  const reconciliados = [...atuais];
+  const movimentos = sessoes.flatMap((sessao) =>
+    (sessao.movimentos ?? []).map((movimento) => ({
+      movimento,
+      caixaId: sessao.id,
+      unidade: sessao.unidade,
+    }))
+  );
+  const movimentosEstornados = new Set(
+    movimentos
+      .filter(({ movimento }) =>
+        movimento.natureza === "estorno_entrada" ||
+        movimento.natureza === "estorno_saida"
+      )
+      .map(({ movimento }) => movimento.estornoDeId)
+      .filter(Boolean)
+  );
+
+  movimentos.forEach(({ movimento, caixaId, unidade }) => {
+    if (
+      !["entrada", "saida"].includes(movimento.natureza) ||
+      movimentosEstornados.has(movimento.id)
+    ) {
+      return;
+    }
+
+    const data = dataLocalDoMovimento(movimento.dataHora);
+    const valor = Number(movimento.valor ?? 0);
+    const descricao = movimento.descricao.trim();
+    const descricaoNormalizada = descricao.toLocaleLowerCase("pt-BR");
+    const alunoNormalizado = (movimento.alunoNome ?? "")
+      .trim()
+      .toLocaleLowerCase("pt-BR");
+
+    const indiceExistente = reconciliados.findIndex((lancamento) => {
+      if (lancamento.movimentoCaixaId === movimento.id) return true;
+      if (
+        lancamento.data !== data ||
+        Boolean(lancamento.estornadoEm) ||
+        Math.abs(
+          (movimento.natureza === "entrada"
+            ? Number(lancamento.entrada)
+            : Number(lancamento.saida)) - valor
+        ) > 0.001
+      ) {
+        return false;
+      }
+      const descricaoLancamento = lancamento.descricao
+        .trim()
+        .toLocaleLowerCase("pt-BR");
+      return (
+        descricaoLancamento === descricaoNormalizada ||
+        Boolean(alunoNormalizado && descricaoLancamento.includes(alunoNormalizado))
+      );
+    });
+
+    if (indiceExistente >= 0) {
+      if (!reconciliados[indiceExistente].movimentoCaixaId) {
+        reconciliados[indiceExistente] = {
+          ...reconciliados[indiceExistente],
+          caixaId,
+          movimentoCaixaId: movimento.id,
+        };
+      }
+      return;
+    }
+
+    reconciliados.push({
+      id: `recuperado-caixa-${movimento.id}`,
+      dia: diaDaData(data),
+      data,
+      competencia: competenciaDaData(data),
+      descricao,
+      tipoEntrada:
+        movimento.natureza === "entrada"
+          ? movimento.tipoEntrada ||
+            (["mensalidade", "conta_receber", "secretaria"].includes(movimento.origem)
+              ? "Mensalidade"
+              : "Receita")
+          : "",
+      tipoSaida:
+        movimento.natureza === "saida"
+          ? movimento.tipoSaida ||
+            (movimento.origem === "taxa_cartao" ? "Taxas de cartão" : "Despesa")
+          : "",
+      formaPagamento: movimento.formaPagamento,
+      entrada: movimento.natureza === "entrada" ? valor : 0,
+      saida: movimento.natureza === "saida" ? valor : 0,
+      unidade: normalizarUnidade(unidade),
+      origem: "manual",
+      usuarioResponsavelId: movimento.usuarioId,
+      usuarioResponsavelNome: movimento.usuarioNome,
+      caixaId,
+      movimentoCaixaId: movimento.id,
+      contaId:
+        ["conta_receber", "conta_pagar"].includes(movimento.origem)
+          ? movimento.origemId
+          : undefined,
+      parcelasCartao: movimento.parcelasCartao,
+      taxaCartao: movimento.taxaCartao,
+      valorLiquidoCartao: movimento.valorLiquido,
+    });
+  });
+
+  const mudou =
+    reconciliados.length !== atuais.length ||
+    reconciliados.some(
+      (item, indice) => item.movimentoCaixaId !== atuais[indice]?.movimentoCaixaId
+    );
+  return mudou ? reconciliados : atuais;
 };
 
 /* =========================================================
@@ -813,6 +944,29 @@ function App() {
     };
   }, [carregado]);
 
+  useEffect(() => {
+    if (!carregado) return;
+
+    const conciliarCaixaLocal = () => {
+      try {
+        const bruto = localStorage.getItem(CHAVE_CAIXA);
+        if (!bruto) return;
+        const dados = JSON.parse(bruto) as { sessoes?: SessaoCaixaOperacional[] };
+        if (!Array.isArray(dados.sessoes)) return;
+        setLancamentos((atuais) =>
+          reconciliarMovimentosDoCaixa(atuais, dados.sessoes!)
+        );
+      } catch (erro) {
+        console.error("Não foi possível conciliar o caixa com o financeiro:", erro);
+      }
+    };
+
+    conciliarCaixaLocal();
+    window.addEventListener(EVENTO_CAIXA_ATUALIZADO, conciliarCaixaLocal);
+    return () =>
+      window.removeEventListener(EVENTO_CAIXA_ATUALIZADO, conciliarCaixaLocal);
+  }, [carregado]);
+
   /* =======================================================
      SALVAMENTO AUTOMÁTICO
   ======================================================= */
@@ -837,6 +991,18 @@ function App() {
             unidade: normalizarUnidade(item.unidade || ""),
           }))
         );
+      }
+      if (
+        detalhe?.chave === CHAVE_CAIXA &&
+        detalhe.valor &&
+        typeof detalhe.valor === "object"
+      ) {
+        const sessoes = (detalhe.valor as { sessoes?: SessaoCaixaOperacional[] }).sessoes;
+        if (Array.isArray(sessoes)) {
+          setLancamentos((atuais) =>
+            reconciliarMovimentosDoCaixa(atuais, sessoes)
+          );
+        }
       }
       if (
         detalhe?.chave ===
