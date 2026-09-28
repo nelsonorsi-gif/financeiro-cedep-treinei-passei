@@ -357,13 +357,58 @@ const reconciliarMovimentosDoCaixa = (
     });
   });
 
-  const mudou =
-    reconciliados.length !== atuais.length ||
-    reconciliados.some(
-      (item, indice) => item.movimentoCaixaId !== atuais[indice]?.movimentoCaixaId
+  const canonicos: Lancamento[] = [];
+  reconciliados.forEach((item) => {
+    if (!item.movimentoCaixaId) {
+      canonicos.push(item);
+      return;
+    }
+    const indice = canonicos.findIndex(
+      (existente) => existente.movimentoCaixaId === item.movimentoCaixaId
     );
-  return mudou ? reconciliados : atuais;
+    if (indice < 0) {
+      canonicos.push(item);
+      return;
+    }
+    const existenteRecuperado = canonicos[indice].id.startsWith("recuperado-caixa-");
+    const itemRecuperado = item.id.startsWith("recuperado-caixa-");
+    if (existenteRecuperado && !itemRecuperado) {
+      canonicos[indice] = item;
+    }
+  });
+
+  const mudou =
+    canonicos.length !== atuais.length ||
+    canonicos.some(
+      (item, indice) =>
+        item.id !== atuais[indice]?.id ||
+        item.movimentoCaixaId !== atuais[indice]?.movimentoCaixaId
+    );
+  return mudou ? canonicos : atuais;
 };
+
+const mesclarLancamentosSemDuplicarMovimento = (
+  atuais: Lancamento[],
+  novos: Lancamento[]
+) =>
+  novos.reduce((resultado, novo) => {
+    let preparado = novo.movimentoCaixaId
+      ? resultado.filter(
+          (item) =>
+            item.movimentoCaixaId !== novo.movimentoCaixaId ||
+            item.id === novo.id
+        )
+      : resultado;
+
+    const indice = preparado.findIndex((item) => item.id === novo.id);
+    if (indice >= 0) {
+      preparado = preparado.map((item, posicao) =>
+        posicao === indice ? novo : item
+      );
+      return preparado;
+    }
+    return [...preparado, novo];
+  }, atuais);
 
 /* =========================================================
    IDENTIFICAR MÊS E ANO DO ARQUIVO
@@ -2085,12 +2130,11 @@ function App() {
             )
         );
       } else {
-        setLancamentos(
-          (dadosAtuais) => [
-            ...dadosAtuais,
-
-            novoLancamento,
-          ]
+        setLancamentos((dadosAtuais) =>
+          mesclarLancamentosSemDuplicarMovimento(
+            dadosAtuais,
+            [novoLancamento]
+          )
         );
       }
 
@@ -2570,18 +2614,9 @@ function App() {
         });
       }
       setLancamentos((atuais) =>
-        lancamentosNovos.reduce(
-          (resultado, lancamento) => {
-            const existente = resultado.some(
-              (item) => item.id === lancamento.id
-            );
-            return existente
-              ? resultado.map((item) =>
-                  item.id === lancamento.id ? lancamento : item
-                )
-              : [...resultado, lancamento];
-          },
-          atuais
+        mesclarLancamentosSemDuplicarMovimento(
+          atuais,
+          lancamentosNovos
         )
       );
     };
@@ -2640,7 +2675,12 @@ function App() {
           usuarioResponsavelNome: usuarioAtual?.nome,
         });
       }
-      setLancamentos((atuais) => [...atuais, ...lancamentosNovos]);
+      setLancamentos((atuais) =>
+        mesclarLancamentosSemDuplicarMovimento(
+          atuais,
+          lancamentosNovos
+        )
+      );
     };
 
   const registrarPagamentoProfessor =
