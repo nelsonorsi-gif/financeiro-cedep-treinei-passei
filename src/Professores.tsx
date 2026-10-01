@@ -635,13 +635,6 @@ function Professores({
     [dados.extras, professorSelecionado, competencia]
   );
 
-  const pendentes =
-    lancamentosFiltrados.filter(
-      (item) => !item.pago && !item.contaPagarId
-    );
-  const extrasPendentes = extrasFiltrados.filter(
-    (item) => !item.pago && !item.contaPagarId
-  );
   const totalAulas =
     lancamentosFiltrados.reduce(
       (total, item) =>
@@ -688,18 +681,6 @@ function Professores({
         ),
       0
     ) + totalExtras;
-  const totalPendente =
-    pendentes.reduce(
-      (total, item) =>
-        total +
-        totalLancamento(
-          item
-        ),
-      0
-    ) + extrasPendentes.reduce(
-      (total, item) => total + item.valor,
-      0
-    );
 
   const lancamentosRelatorio =
     useMemo(
