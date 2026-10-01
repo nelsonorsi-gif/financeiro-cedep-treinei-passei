@@ -37,7 +37,19 @@ export type Conta = {
     | "Renegociado"
     | "Cancelado";
   tipo: "receber" | "pagar";
-  origem?: "manual" | "mensalidade" | "secretaria" | "escola" | "repasse-escola";
+  origem?: "manual" | "mensalidade" | "secretaria" | "escola" | "repasse-escola" | "professor";
+  detalhamentoProfessor?: {
+    professorId: string;
+    professorNome: string;
+    competencia: string;
+    aulas: number;
+    combustivel: number;
+    pedagio: number;
+    extras: number;
+    itensExtras: Array<{ descricao: string; valor: number }>;
+    lancamentoIds: string[];
+    extraIds: string[];
+  };
   criadoPorId?: string;
   criadoPorNome?: string;
   criadoPorPerfil?: string;
