@@ -42,28 +42,49 @@ type LancamentoProfessor = {
   observacao: string;
   pago: boolean;
   dataPagamento: string;
+  contaPagarId?: string;
+};
+
+type ExtraProfessor = {
+  id: string;
+  professorId: string;
+  competencia: string;
+  descricao: string;
+  valor: number;
+  contaPagarId?: string;
+  pago: boolean;
+  dataPagamento: string;
 };
 
 type DadosProfessores = {
   professores: Professor[];
   lancamentos: LancamentoProfessor[];
+  extras: ExtraProfessor[];
 };
 
 export type PagamentoProfessorFinanceiro = {
   id: string;
+  professorId: string;
   professorNome: string;
   competencia: string;
   valor: number;
-  data: string;
+  vencimento: string;
   banco: string;
   unidade: string;
+  aulas: number;
+  combustivel: number;
+  pedagio: number;
+  extras: number;
+  itensExtras: Array<{ descricao: string; valor: number }>;
+  lancamentoIds: string[];
+  extraIds: string[];
 };
 
 type Props = {
   perfil: Perfil;
   onRegistrarPagamento: (
     pagamento: PagamentoProfessorFinanceiro
-  ) => void;
+  ) => Promise<boolean>;
 };
 
 export const CHAVE_PROFESSORES =
@@ -342,6 +363,7 @@ function Professores({
     useState<DadosProfessores>({
       professores: [],
       lancamentos: [],
+      extras: [],
     });
   const [carregado, setCarregado] =
     useState(false);
@@ -429,6 +451,16 @@ function Professores({
     setUnidadePagamento,
   ] = useState("CEDEP");
   const [
+    vencimentoPagamento,
+    setVencimentoPagamento,
+  ] = useState(hojeISO());
+  const [
+    descricaoExtra,
+    setDescricaoExtra,
+  ] = useState("");
+  const [valorExtra, setValorExtra] =
+    useState("");
+  const [
     professorRelatorio,
     setProfessorRelatorio,
   ] = useState("Todos");
@@ -478,6 +510,12 @@ function Professores({
             )
               ? conteudo.lancamentos
               : [],
+          extras:
+            Array.isArray(
+              conteudo.extras
+            )
+              ? conteudo.extras
+              : [],
         });
       }
     } catch (erro) {
@@ -508,6 +546,34 @@ function Professores({
       JSON.stringify(dados)
     );
   }, [dados, carregado]);
+
+  useEffect(() => {
+    const atualizarProfessores = () => {
+      try {
+        const salvos = localStorage.getItem(CHAVE_PROFESSORES);
+        if (!salvos) return;
+        const conteudo = JSON.parse(salvos);
+        setDados({
+          professores: Array.isArray(conteudo.professores) ? conteudo.professores : [],
+          lancamentos: Array.isArray(conteudo.lancamentos) ? conteudo.lancamentos : [],
+          extras: Array.isArray(conteudo.extras) ? conteudo.extras : [],
+        });
+      } catch (erro) {
+        console.error("Erro ao atualizar pagamentos dos professores:", erro);
+      }
+    };
+
+    window.addEventListener(
+      "financeiro-professores-atualizados",
+      atualizarProfessores
+    );
+
+    return () =>
+      window.removeEventListener(
+        "financeiro-professores-atualizados",
+        atualizarProfessores
+      );
+  }, []);
 
   useEffect(() => {
     const atualizar = () =>
@@ -557,10 +623,25 @@ function Professores({
       ]
     );
 
+  const extrasFiltrados = useMemo(
+    () =>
+      dados.extras
+        .filter(
+          (item) =>
+            item.professorId === professorSelecionado &&
+            item.competencia === competencia
+        )
+        .sort((a, b) => a.descricao.localeCompare(b.descricao)),
+    [dados.extras, professorSelecionado, competencia]
+  );
+
   const pendentes =
     lancamentosFiltrados.filter(
-      (item) => !item.pago
+      (item) => !item.pago && !item.contaPagarId
     );
+  const extrasPendentes = extrasFiltrados.filter(
+    (item) => !item.pago && !item.contaPagarId
+  );
   const totalAulas =
     lancamentosFiltrados.reduce(
       (total, item) =>
@@ -594,6 +675,10 @@ function Professores({
           : 0),
       0
     );
+  const totalExtras = extrasFiltrados.reduce(
+    (total, item) => total + item.valor,
+    0
+  );
   const totalMes =
     lancamentosFiltrados.reduce(
       (total, item) =>
@@ -602,7 +687,7 @@ function Professores({
           item
         ),
       0
-    );
+    ) + totalExtras;
   const totalPendente =
     pendentes.reduce(
       (total, item) =>
@@ -610,6 +695,9 @@ function Professores({
         totalLancamento(
           item
         ),
+      0
+    ) + extrasPendentes.reduce(
+      (total, item) => total + item.valor,
       0
     );
 
@@ -1357,86 +1445,145 @@ function Professores({
     }));
   };
 
-  const registrarPagamento =
-    () => {
-      if (
-        !professorAtual ||
-        pendentes.length === 0
-      ) {
-        alert(
-          "Não existem valores pendentes para este professor no mês."
-        );
-        return;
-      }
+  const adicionarExtra = () => {
+    if (!professorAtual) {
+      alert("Selecione o professor.");
+      return;
+    }
 
-      if (!bancoPagamento) {
-        alert(
-          "Selecione o banco ou conta do pagamento."
-        );
-        return;
-      }
+    const valor = converterNumero(valorExtra);
+    if (!descricaoExtra.trim() || valor <= 0) {
+      alert("Informe a descrição e um valor válido para o extra.");
+      return;
+    }
 
-      if (!unidadePagamento) {
-        alert(
-          "Selecione a unidade."
-        );
-        return;
-      }
+    setDados((atual) => ({
+      ...atual,
+      extras: [
+        ...atual.extras,
+        {
+          id: `extra-professor-${Date.now()}`,
+          professorId: professorAtual.id,
+          competencia,
+          descricao: descricaoExtra.trim(),
+          valor,
+          pago: false,
+          dataPagamento: "",
+        },
+      ],
+    }));
+    setDescricaoExtra("");
+    setValorExtra("");
+  };
 
-      if (
-        !window.confirm(
-          `Confirma o pagamento de ${moeda(
-            totalPendente
-          )} para ${professorAtual.nome}?`
-        )
-      ) {
-        return;
-      }
+  const excluirExtra = (extra: ExtraProfessor) => {
+    if (extra.pago || extra.contaPagarId) {
+      alert("Este extra já está vinculado a uma conta a pagar.");
+      return;
+    }
+    setDados((atual) => ({
+      ...atual,
+      extras: atual.extras.filter((item) => item.id !== extra.id),
+    }));
+  };
 
-      const dataPagamento =
-        hojeISO();
-      const ids =
-        new Set(
-          pendentes.map(
-            (item) =>
-              item.id
-          )
-        );
-
-      setDados((atual) => ({
-        ...atual,
-        lancamentos:
-          atual.lancamentos.map(
-            (item) =>
-              ids.has(item.id)
-                ? {
-                    ...item,
-                    pago: true,
-                    dataPagamento,
-                  }
-                : item
-          ),
-      }));
-
-      onRegistrarPagamento({
-        id: `pagamento-professor-${professorAtual.id}-${competencia}-${Date.now()}`,
-        professorNome:
-          professorAtual.nome,
-        competencia,
-        valor:
-          totalPendente,
-        data:
-          dataPagamento,
-        banco:
-          bancoPagamento,
-        unidade:
-          unidadePagamento,
-      });
-
+  const registrarPagamento = async () => {
+    if (
+      !professorAtual ||
+      (pendentes.length === 0 && extrasPendentes.length === 0)
+    ) {
       alert(
-        "Pagamento registrado no financeiro."
+        "Não existem valores pendentes para este professor no mês."
       );
-    };
+      return;
+    }
+
+    if (!bancoPagamento) {
+      alert("Selecione o banco ou conta do pagamento.");
+      return;
+    }
+
+    if (!unidadePagamento) {
+      alert("Selecione a unidade.");
+      return;
+    }
+
+    if (!vencimentoPagamento) {
+      alert("Informe o vencimento da conta.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Gerar uma conta a pagar de ${moeda(totalPendente)} para ${professorAtual.nome}?`
+      )
+    ) {
+      return;
+    }
+
+    const aulas = pendentes.reduce(
+      (total, item) => total + item.quantidade * item.valorUnitario,
+      0
+    );
+    const combustivel = pendentes.reduce(
+      (total, item) =>
+        total + (item.pagarCombustivel ? item.valorCombustivel : 0),
+      0
+    );
+    const pedagio = pendentes.reduce(
+      (total, item) =>
+        total + (item.pagarPedagio ? item.valorPedagio : 0),
+      0
+    );
+    const extras = extrasPendentes.reduce(
+      (total, item) => total + item.valor,
+      0
+    );
+    const contaId = `conta-professor-${professorAtual.id}-${competencia}-${Date.now()}`;
+    const lancamentoIds = pendentes.map((item) => item.id);
+    const extraIds = extrasPendentes.map((item) => item.id);
+
+    const salvo = await onRegistrarPagamento({
+      id: contaId,
+      professorId: professorAtual.id,
+      professorNome: professorAtual.nome,
+      competencia,
+      valor: aulas + combustivel + pedagio + extras,
+      vencimento: vencimentoPagamento,
+      banco: bancoPagamento,
+      unidade: unidadePagamento,
+      aulas,
+      combustivel,
+      pedagio,
+      extras,
+      itensExtras: extrasPendentes.map((item) => ({
+        descricao: item.descricao,
+        valor: item.valor,
+      })),
+      lancamentoIds,
+      extraIds,
+    });
+
+    if (!salvo) return;
+
+    const idsLancamentos = new Set(lancamentoIds);
+    const idsExtras = new Set(extraIds);
+    setDados((atual) => ({
+      ...atual,
+      lancamentos: atual.lancamentos.map((item) =>
+        idsLancamentos.has(item.id)
+          ? { ...item, contaPagarId: contaId }
+          : item
+      ),
+      extras: atual.extras.map((item) =>
+        idsExtras.has(item.id)
+          ? { ...item, contaPagarId: contaId }
+          : item
+      ),
+    }));
+
+    alert("Conta a pagar do professor gerada com sucesso.");
+  };
 
   return (
     <div>
@@ -1768,6 +1915,77 @@ function Professores({
             </div>
           </section>
 
+          {administrador && professorSelecionado && (
+            <section
+              style={{ ...estilos.caixa, marginTop: 24 }}
+            >
+              <h2>Extras do professor</h2>
+              <p style={estilos.textoCinza}>
+                Inclua monitoria, bônus ou outro valor fixo deste mês.
+              </p>
+              <div style={estilos.formGrid}>
+                <Campo
+                  label="Descrição do extra"
+                  value={descricaoExtra}
+                  onChange={setDescricaoExtra}
+                  placeholder="Ex.: Monitoria"
+                />
+                <Campo
+                  label="Valor"
+                  value={valorExtra}
+                  onChange={setValorExtra}
+                  placeholder="0,00"
+                />
+              </div>
+              <div style={estilos.botoes}>
+                <button
+                  onClick={adicionarExtra}
+                  style={estilos.botaoPrincipal}
+                >
+                  Adicionar extra
+                </button>
+              </div>
+              {extrasFiltrados.length > 0 && (
+                <div style={estilos.tabelaContainer}>
+                  <table style={estilos.tabela}>
+                    <thead>
+                      <tr>
+                        <th style={estilos.th}>Descrição</th>
+                        <th style={estilos.th}>Valor</th>
+                        <th style={estilos.th}>Status</th>
+                        <th style={estilos.th}>Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {extrasFiltrados.map((extra) => (
+                        <tr key={extra.id}>
+                          <td style={estilos.td}>{extra.descricao}</td>
+                          <td style={estilos.td}>{moeda(extra.valor)}</td>
+                          <td style={estilos.td}>
+                            {extra.pago
+                              ? "Pago"
+                              : extra.contaPagarId
+                                ? "Conta gerada"
+                                : "Pendente"}
+                          </td>
+                          <td style={estilos.td}>
+                            <button
+                              onClick={() => excluirExtra(extra)}
+                              disabled={extra.pago || Boolean(extra.contaPagarId)}
+                              style={estilos.botaoExcluir}
+                            >
+                              Excluir
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+
           {administrador && (
             <section style={estilos.cards}>
             <Card
@@ -1785,6 +2003,10 @@ function Professores({
             <Card
               titulo="Pedágio"
               valor={moeda(totalPedagio)}
+            />
+            <Card
+              titulo="Extras"
+              valor={moeda(totalExtras)}
             />
             <Card
               titulo="Total do mês"
@@ -1901,7 +2123,9 @@ function Professores({
                           <td style={estilos.td}>
                             {item.pago
                               ? "Pago"
-                              : "Pendente"}
+                              : item.contaPagarId
+                                ? "Conta gerada"
+                                : "Pendente"}
                           </td>
                           <td style={estilos.td}>
                             <div style={estilos.botoesLinha}>
@@ -1912,7 +2136,7 @@ function Professores({
                                       item
                                     )
                                   }
-                                  disabled={item.pago}
+                                  disabled={item.pago || Boolean(item.contaPagarId)}
                                   style={estilos.botaoEditar}
                                 >
                                   Ajustar valores
@@ -1924,7 +2148,7 @@ function Professores({
                                     item
                                   )
                                 }
-                                disabled={item.pago}
+                                disabled={item.pago || Boolean(item.contaPagarId)}
                                 style={estilos.botaoExcluir}
                               >
                                 Excluir
@@ -1948,7 +2172,7 @@ function Professores({
             }}
           >
             <h2>
-              Pagamento do professor
+              Gerar conta a pagar do professor
             </h2>
             <p style={estilos.textoCinza}>
               Valor pendente:{" "}
@@ -1968,6 +2192,12 @@ function Professores({
                   })
                 )}
               />
+              <Campo
+                label="Vencimento"
+                value={vencimentoPagamento}
+                onChange={setVencimentoPagamento}
+                type="date"
+              />
               <CampoSelect
                 label="Unidade"
                 value={unidadePagamento}
@@ -1985,7 +2215,7 @@ function Professores({
                 onClick={registrarPagamento}
                 style={estilos.botaoPagar}
               >
-                Registrar pagamento do mês
+                Gerar conta a pagar
               </button>
             </div>
             </section>
