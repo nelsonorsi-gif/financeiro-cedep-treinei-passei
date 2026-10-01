@@ -35,6 +35,7 @@ type ContaBanco = {
   data_baixa: string | null;
   criado_em: string;
   atualizado_em: string;
+  detalhamento: Conta["detalhamentoProfessor"] | null;
 };
 
 const numero = (valor: number | string | null | undefined) => {
@@ -65,6 +66,7 @@ const paraConta = (registro: ContaBanco): Conta => ({
   dataBaixa: registro.data_baixa ?? undefined,
   criadoEm: registro.criado_em,
   atualizadoEm: registro.atualizado_em,
+  detalhamentoProfessor: registro.detalhamento ?? undefined,
 });
 
 const paraBanco = (
@@ -96,6 +98,7 @@ const paraBanco = (
     new Date().toISOString(),
   atualizado_em:
     new Date().toISOString(),
+  detalhamento: conta.detalhamentoProfessor ?? null,
 });
 
 const cliente = () => {
