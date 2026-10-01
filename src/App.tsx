@@ -2791,8 +2791,13 @@ function App() {
             conta.status !== "Cancelado" &&
             conta.detalhamentoProfessor?.professorId === pagamento.professorId &&
             conta.detalhamentoProfessor?.competencia === pagamento.competencia &&
-            conta.detalhamentoProfessor?.lancamentoIds.some((id) =>
-              pagamento.lancamentoIds.includes(id)
+            (
+              conta.detalhamentoProfessor?.lancamentoIds.some((id) =>
+                pagamento.lancamentoIds.includes(id)
+              ) ||
+              conta.detalhamentoProfessor?.extraIds.some((id) =>
+                pagamento.extraIds.includes(id)
+              )
             )
         );
 
