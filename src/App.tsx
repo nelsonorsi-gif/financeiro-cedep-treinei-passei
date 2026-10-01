@@ -2594,7 +2594,59 @@ function App() {
           contaId: conta.id,
         };
 
-      const lancamentosNovos: Lancamento[] = [novoLancamento];
+      const detalheProfessor = conta.detalhamentoProfessor;
+      const baseProfessor = {
+        dia: novoLancamento.dia,
+        data: novoLancamento.data,
+        competencia: novoLancamento.competencia,
+        formaPagamento: novoLancamento.formaPagamento,
+        entrada: 0,
+        unidade: conta.unidade,
+        origem: "manual" as const,
+        contaId: conta.id,
+      };
+      const lancamentosNovos: Lancamento[] = detalheProfessor
+        ? [
+            ...(detalheProfessor.aulas > 0
+              ? [{
+                  ...baseProfessor,
+                  id: `baixa-${conta.id}-aulas`,
+                  descricao: `Aulas - ${detalheProfessor.professorNome}`,
+                  tipoEntrada: "",
+                  tipoSaida: "Aulas de Professores",
+                  saida: detalheProfessor.aulas,
+                }]
+              : []),
+            ...(detalheProfessor.combustivel > 0
+              ? [{
+                  ...baseProfessor,
+                  id: `baixa-${conta.id}-combustivel`,
+                  descricao: `Combustível - ${detalheProfessor.professorNome}`,
+                  tipoEntrada: "",
+                  tipoSaida: "Combustível de Professores",
+                  saida: detalheProfessor.combustivel,
+                }]
+              : []),
+            ...(detalheProfessor.pedagio > 0
+              ? [{
+                  ...baseProfessor,
+                  id: `baixa-${conta.id}-pedagio`,
+                  descricao: `Pedágio - ${detalheProfessor.professorNome}`,
+                  tipoEntrada: "",
+                  tipoSaida: "Pedágio de Professores",
+                  saida: detalheProfessor.pedagio,
+                }]
+              : []),
+            ...detalheProfessor.itensExtras.map((extra, indice) => ({
+              ...baseProfessor,
+              id: `baixa-${conta.id}-extra-${indice + 1}`,
+              descricao: `${extra.descricao} - ${detalheProfessor.professorNome}`,
+              tipoEntrada: "",
+              tipoSaida: "Extras de Professores",
+              saida: extra.valor,
+            })),
+          ]
+        : [novoLancamento];
       if ((conta.taxaCartao ?? 0) > 0) {
         lancamentosNovos.push({
           id: "taxa-cartao-" + novoLancamento.id,
@@ -2613,6 +2665,39 @@ function App() {
           usuarioResponsavelNome: usuarioAtual?.nome,
         });
       }
+      if (detalheProfessor) {
+        try {
+          const chave = "financeiro-cedep-professores";
+          const dadosProfessores = JSON.parse(
+            localStorage.getItem(chave) ??
+              '{"professores":[],"lancamentos":[],"extras":[]}'
+          );
+          const idsLancamentos = new Set(detalheProfessor.lancamentoIds);
+          const idsExtras = new Set(detalheProfessor.extraIds);
+          const dataPagamento = conta.dataBaixa ?? dataBaixa;
+          dadosProfessores.lancamentos = Array.isArray(dadosProfessores.lancamentos)
+            ? dadosProfessores.lancamentos.map((item: { id: string }) =>
+                idsLancamentos.has(item.id)
+                  ? { ...item, pago: true, dataPagamento, contaPagarId: conta.id }
+                  : item
+              )
+            : [];
+          dadosProfessores.extras = Array.isArray(dadosProfessores.extras)
+            ? dadosProfessores.extras.map((item: { id: string }) =>
+                idsExtras.has(item.id)
+                  ? { ...item, pago: true, dataPagamento, contaPagarId: conta.id }
+                  : item
+              )
+            : [];
+          localStorage.setItem(chave, JSON.stringify(dadosProfessores));
+          window.dispatchEvent(
+            new Event("financeiro-professores-atualizados")
+          );
+        } catch (erro) {
+          console.error("Erro ao atualizar controle do professor:", erro);
+        }
+      }
+
       setLancamentos((atuais) =>
         mesclarLancamentosSemDuplicarMovimento(
           atuais,
@@ -2684,44 +2769,88 @@ function App() {
     };
 
   const registrarPagamentoProfessor =
-    (
+    async (
       pagamento:
         PagamentoProfessorFinanceiro
-    ) => {
-      const novoLancamento: Lancamento =
-        {
+    ): Promise<boolean> => {
+      if (!usuarioAtual) return false;
+
+      try {
+        const contasRemotas =
+          (await carregarContasEstruturadas()) ?? [];
+        const contasLocais: Conta[] = JSON.parse(
+          localStorage.getItem(CHAVE_CONTAS) ?? "[]"
+        );
+        const contas = contasRemotas.length
+          ? contasRemotas
+          : contasLocais;
+
+        const duplicada = contas.some(
+          (conta) =>
+            conta.origem === "professor" &&
+            conta.status !== "Cancelado" &&
+            conta.detalhamentoProfessor?.professorId === pagamento.professorId &&
+            conta.detalhamentoProfessor?.competencia === pagamento.competencia &&
+            conta.detalhamentoProfessor?.lancamentoIds.some((id) =>
+              pagamento.lancamentoIds.includes(id)
+            )
+        );
+
+        if (duplicada) {
+          alert(
+            "Já existe uma conta a pagar gerada para estas atividades do professor."
+          );
+          return false;
+        }
+
+        const agora = new Date().toISOString();
+        const novaConta: Conta = {
           id: pagamento.id,
-          dia:
-            diaDaData(
-              pagamento.data
-            ),
-          data:
-            pagamento.data,
-          competencia:
-            competenciaDaData(
-              pagamento.data
-            ),
-          descricao:
-            `Pagamento professor ${pagamento.professorNome} - ${pagamento.competencia}`,
-          tipoEntrada: "",
-          tipoSaida:
-            "Pagamento de Professor",
-          formaPagamento:
-            pagamento.banco,
-          entrada: 0,
-          saida:
-            pagamento.valor,
-          unidade:
-            pagamento.unidade,
-          origem: "manual",
+          tipo: "pagar",
+          descricao: `Pagamento professor ${pagamento.professorNome} - ${pagamento.competencia}`,
+          valor: pagamento.valor,
+          valorPago: 0,
+          vencimento: pagamento.vencimento,
+          categoria: "Pagamento de Professor",
+          banco: pagamento.banco,
+          unidade: pagamento.unidade,
+          observacao:
+            `Aulas: ${moeda(pagamento.aulas)} | Combustível: ${moeda(pagamento.combustivel)} | Pedágio: ${moeda(pagamento.pedagio)} | Extras: ${moeda(pagamento.extras)}`,
+          status: "Pendente",
+          origem: "professor",
+          criadoPorId: usuarioAtual.id,
+          atualizadoPorId: usuarioAtual.id,
+          criadoEm: agora,
+          atualizadoEm: agora,
+          detalhamentoProfessor: {
+            professorId: pagamento.professorId,
+            professorNome: pagamento.professorNome,
+            competencia: pagamento.competencia,
+            aulas: pagamento.aulas,
+            combustivel: pagamento.combustivel,
+            pedagio: pagamento.pedagio,
+            extras: pagamento.extras,
+            itensExtras: pagamento.itensExtras,
+            lancamentoIds: pagamento.lancamentoIds,
+            extraIds: pagamento.extraIds,
+          },
         };
 
-      setLancamentos(
-        (atuais) => [
-          ...atuais,
-          novoLancamento,
-        ]
-      );
+        await salvarContaEstruturada(novaConta, usuarioAtual.id);
+        const atualizadas = [
+          ...contasLocais.filter((conta) => conta.id !== novaConta.id),
+          novaConta,
+        ];
+        localStorage.setItem(CHAVE_CONTAS, JSON.stringify(atualizadas));
+        window.dispatchEvent(new Event("financeiro-contas-atualizadas"));
+        return true;
+      } catch (erro) {
+        console.error("Erro ao gerar conta do professor:", erro);
+        alert(
+          "Não foi possível gerar a conta a pagar do professor. Tente novamente."
+        );
+        return false;
+      }
     };
 
   const registrarPagamentoCompromisso =
