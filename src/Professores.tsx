@@ -712,6 +712,25 @@ function Professores({
       ]
     );
 
+  const extrasRelatorio = useMemo(
+    () => {
+      const competenciaInicial = dataInicialRelatorio.slice(0, 7);
+      const competenciaFinal = dataFinalRelatorio.slice(0, 7);
+      return dados.extras.filter(
+        (item) =>
+          (professorRelatorio === "Todos" ||
+            item.professorId === professorRelatorio) &&
+          (!competenciaInicial || item.competencia >= competenciaInicial) &&
+          (!competenciaFinal || item.competencia <= competenciaFinal)
+      );
+    }, [
+      dados.extras,
+      professorRelatorio,
+      dataInicialRelatorio,
+      dataFinalRelatorio,
+    ]
+  );
+
   const resumoRelatorio =
     useMemo(() => {
       const mapa = new Map<
@@ -722,6 +741,7 @@ function Professores({
           aulasValor: number;
           combustivel: number;
           pedagio: number;
+          extras: number;
           total: number;
           descricoes: string[];
         }
@@ -749,6 +769,7 @@ function Professores({
               aulasValor: 0,
               combustivel: 0,
               pedagio: 0,
+              extras: 0,
               total: 0,
               descricoes: [],
             };
@@ -786,11 +807,35 @@ function Professores({
         }
       );
 
+      extrasRelatorio.forEach((extra) => {
+        const professor = dados.professores.find(
+          (registro) => registro.id === extra.professorId
+        );
+        if (!professor) return;
+        const atual = mapa.get(professor.id) ?? {
+          professor,
+          aulas: 0,
+          aulasValor: 0,
+          combustivel: 0,
+          pedagio: 0,
+          extras: 0,
+          total: 0,
+          descricoes: [],
+        };
+        atual.extras += extra.valor;
+        atual.total += extra.valor;
+        atual.descricoes.push(
+          `Extra (${extra.competencia.split("-").reverse().join("/")}): ${extra.descricao} - ${moeda(extra.valor)}`
+        );
+        mapa.set(professor.id, atual);
+      });
+
       return Array.from(
         mapa.values()
       );
     }, [
       lancamentosRelatorio,
+      extrasRelatorio,
       dados.professores,
     ]);
 
@@ -820,79 +865,54 @@ function Professores({
 
   const tabelaDetalhesHtml = (
     professor: Professor,
-    registros: LancamentoProfessor[]
+    registros: LancamentoProfessor[],
+    extras: ExtraProfessor[]
   ) => {
-    const aulas =
-      registros.reduce(
-        (total, item) =>
-          total +
-          item.quantidade,
-        0
-      );
-    const aulasValor =
-      registros.reduce(
-        (total, item) =>
-          total +
-          item.quantidade *
-            item.valorUnitario,
-        0
-      );
-    const combustivel =
-      registros.reduce(
-        (total, item) =>
-          total +
-          (item.pagarCombustivel
-            ? item.valorCombustivel
-            : 0),
-        0
-      );
-    const pedagio =
-      registros.reduce(
-        (total, item) =>
-          total +
-          (item.pagarPedagio
-            ? item.valorPedagio
-            : 0),
-        0
-      );
+    const aulas = registros.reduce(
+      (total, item) => total + item.quantidade,
+      0
+    );
+    const aulasValor = registros.reduce(
+      (total, item) => total + item.quantidade * item.valorUnitario,
+      0
+    );
+    const combustivel = registros.reduce(
+      (total, item) =>
+        total + (item.pagarCombustivel ? item.valorCombustivel : 0),
+      0
+    );
+    const pedagio = registros.reduce(
+      (total, item) =>
+        total + (item.pagarPedagio ? item.valorPedagio : 0),
+      0
+    );
+    const extrasValor = extras.reduce(
+      (total, item) => total + item.valor,
+      0
+    );
     const total =
       registros.reduce(
-        (soma, item) =>
-          soma +
-          totalLancamento(
-            item
-          ),
+        (soma, item) => soma + totalLancamento(item),
         0
-      );
+      ) + extrasValor;
 
     return `
       <section class="professor">
-        <h2>${escaparHtml(
-          professor.nome
-        )}</h2>
+        <h2>${escaparHtml(professor.nome)}</h2>
         <div class="muted">Disciplina(s): ${escaparHtml(
-          professor.disciplinas.join(
-            ", "
-          ) || "Não informada"
+          professor.disciplinas.join(", ") || "Não informada"
         )}</div>
         <div class="resumo">
-          <div class="card">Quantidade<strong>${escaparHtml(
-            aulas
-          )}</strong></div>
-          <div class="card">Aulas/atividades<strong>${escaparHtml(
-            moeda(aulasValor)
-          )}</strong></div>
-          <div class="card">Combustível<strong>${escaparHtml(
-            moeda(combustivel)
-          )}</strong></div>
-          <div class="card">Pedágio<strong>${escaparHtml(
-            moeda(pedagio)
-          )}</strong></div>
+          <div class="card">Quantidade<strong>${escaparHtml(aulas)}</strong></div>
+          <div class="card">Aulas/atividades<strong>${escaparHtml(moeda(aulasValor))}</strong></div>
+          <div class="card">Combustível<strong>${escaparHtml(moeda(combustivel))}</strong></div>
+          <div class="card">Pedágio<strong>${escaparHtml(moeda(pedagio))}</strong></div>
+          <div class="card">Extras<strong>${escaparHtml(moeda(extrasValor))}</strong></div>
         </div>
         <table>
           <thead>
             <tr>
-              <th>Data</th>
+              <th>Data/competência</th>
               <th>Descrição do pagamento</th>
               <th>Quantidade</th>
               <th>Valor unitário</th>
@@ -905,43 +925,33 @@ function Professores({
               .map(
                 (item) => `
                   <tr>
-                    <td>${escaparHtml(
-                      dataTela(
-                        item.data
-                      )
-                    )}</td>
-                    <td>${escaparHtml(
-                      descricaoLancamento(
-                        item
-                      )
-                    )}</td>
-                    <td>${escaparHtml(
-                      item.quantidade
-                    )}</td>
-                    <td class="valor">${escaparHtml(
-                      moeda(
-                        item.valorUnitario
-                      )
-                    )}</td>
-                    <td class="valor">${escaparHtml(
-                      moeda(
-                        totalLancamento(
-                          item
-                        )
-                      )
-                    )}</td>
-                    <td>${item.pago
-                      ? "Pago"
-                      : "Pendente"}</td>
+                    <td>${escaparHtml(dataTela(item.data))}</td>
+                    <td>${escaparHtml(descricaoLancamento(item))}</td>
+                    <td>${escaparHtml(item.quantidade)}</td>
+                    <td class="valor">${escaparHtml(moeda(item.valorUnitario))}</td>
+                    <td class="valor">${escaparHtml(moeda(totalLancamento(item)))}</td>
+                    <td>${item.pago ? "Pago" : item.contaPagarId ? "Conta gerada" : "Pendente"}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+            ${extras
+              .map(
+                (extra) => `
+                  <tr>
+                    <td>${escaparHtml(extra.competencia.split("-").reverse().join("/"))}</td>
+                    <td>${escaparHtml(extra.descricao)}</td>
+                    <td>1</td>
+                    <td class="valor">${escaparHtml(moeda(extra.valor))}</td>
+                    <td class="valor">${escaparHtml(moeda(extra.valor))}</td>
+                    <td>${extra.pago ? "Pago" : extra.contaPagarId ? "Conta gerada" : "Pendente"}</td>
                   </tr>
                 `
               )
               .join("")}
           </tbody>
         </table>
-        <div class="total">Total do professor: ${escaparHtml(
-          moeda(total)
-        )}</div>
+        <div class="total">Total do professor: ${escaparHtml(moeda(total))}</div>
       </section>
     `;
   };
@@ -971,9 +981,13 @@ function Professores({
             professorRelatorio
         );
 
+      const extras = extrasRelatorio.filter(
+        (item) => item.professorId === professorRelatorio
+      );
+
       if (
         !professor ||
-        registros.length === 0
+        (registros.length === 0 && extras.length === 0)
       ) {
         alert(
           "Não existem lançamentos para este professor no período."
@@ -987,7 +1001,8 @@ function Professores({
           ${periodoRelatorioHtml()}
           ${tabelaDetalhesHtml(
             professor,
-            registros
+            registros,
+            extras
           )}
           <div class="assinaturas">
             <div class="assinatura">Responsável CEDEP</div>
@@ -1002,8 +1017,8 @@ function Professores({
   const gerarPdfGeral =
     () => {
       if (
-        lancamentosRelatorio.length ===
-        0
+        lancamentosRelatorio.length === 0 &&
+        extrasRelatorio.length === 0
       ) {
         alert(
           "Não existem lançamentos no período selecionado."
@@ -1017,6 +1032,11 @@ function Professores({
             tabelaDetalhesHtml(
               resumo.professor,
               lancamentosRelatorio.filter(
+                (item) =>
+                  item.professorId ===
+                  resumo.professor.id
+              ),
+              extrasRelatorio.filter(
                 (item) =>
                   item.professorId ===
                   resumo.professor.id
@@ -2349,6 +2369,9 @@ function Professores({
                           Pedágio
                         </th>
                         <th style={estilos.th}>
+                          Extras
+                        </th>
+                        <th style={estilos.th}>
                           Total
                         </th>
                         <th style={estilos.th}>
@@ -2383,6 +2406,11 @@ function Professores({
                             <td style={estilos.td}>
                               {moeda(
                                 item.pedagio
+                              )}
+                            </td>
+                            <td style={estilos.td}>
+                              {moeda(
+                                item.extras
                               )}
                             </td>
                             <td style={estilos.td}>
