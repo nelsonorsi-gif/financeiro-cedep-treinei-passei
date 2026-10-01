@@ -1487,102 +1487,167 @@ function Professores({
     }));
   };
 
-  const registrarPagamento = async () => {
-    if (
-      !professorAtual ||
-      (pendentes.length === 0 && extrasPendentes.length === 0)
-    ) {
+  const gerarContasDoRelatorio = async () => {
+    if (!dataInicialRelatorio || !dataFinalRelatorio) {
+      alert("Informe a data inicial e a data final do período.");
+      return;
+    }
+    if (dataInicialRelatorio > dataFinalRelatorio) {
+      alert("A data inicial não pode ser posterior à data final.");
+      return;
+    }
+    if (!bancoPagamento || !unidadePagamento || !vencimentoPagamento) {
+      alert("Informe banco, unidade e vencimento das contas a pagar.");
+      return;
+    }
+
+    const lancamentosDisponiveis = lancamentosRelatorio.filter(
+      (item) => !item.pago && !item.contaPagarId
+    );
+    const competenciaInicial = dataInicialRelatorio.slice(0, 7);
+    const competenciaFinal = dataFinalRelatorio.slice(0, 7);
+    const extrasDisponiveis = dados.extras.filter(
+      (item) =>
+        !item.pago &&
+        !item.contaPagarId &&
+        item.competencia >= competenciaInicial &&
+        item.competencia <= competenciaFinal &&
+        (professorRelatorio === "Todos" ||
+          item.professorId === professorRelatorio)
+    );
+
+    const grupos = new Map<
+      string,
+      {
+        professor: Professor;
+        lancamentos: LancamentoProfessor[];
+        extras: ExtraProfessor[];
+      }
+    >();
+
+    lancamentosDisponiveis.forEach((item) => {
+      const professor = dados.professores.find(
+        (registro) => registro.id === item.professorId
+      );
+      if (!professor) return;
+      const grupo = grupos.get(professor.id) ?? {
+        professor,
+        lancamentos: [],
+        extras: [],
+      };
+      grupo.lancamentos.push(item);
+      grupos.set(professor.id, grupo);
+    });
+
+    extrasDisponiveis.forEach((extra) => {
+      const professor = dados.professores.find(
+        (registro) => registro.id === extra.professorId
+      );
+      if (!professor) return;
+      const grupo = grupos.get(professor.id) ?? {
+        professor,
+        lancamentos: [],
+        extras: [],
+      };
+      grupo.extras.push(extra);
+      grupos.set(professor.id, grupo);
+    });
+
+    const pagamentos = Array.from(grupos.values()).map((grupo, indice) => {
+      const aulas = grupo.lancamentos.reduce(
+        (total, item) => total + item.quantidade * item.valorUnitario,
+        0
+      );
+      const combustivel = grupo.lancamentos.reduce(
+        (total, item) =>
+          total + (item.pagarCombustivel ? item.valorCombustivel : 0),
+        0
+      );
+      const pedagio = grupo.lancamentos.reduce(
+        (total, item) =>
+          total + (item.pagarPedagio ? item.valorPedagio : 0),
+        0
+      );
+      const extras = grupo.extras.reduce(
+        (total, item) => total + item.valor,
+        0
+      );
+      return {
+        id: `conta-professor-${grupo.professor.id}-${dataInicialRelatorio}-${dataFinalRelatorio}-${Date.now()}-${indice}`,
+        professorId: grupo.professor.id,
+        professorNome: grupo.professor.nome,
+        competencia: `${dataTela(dataInicialRelatorio)} a ${dataTela(dataFinalRelatorio)}`,
+        valor: aulas + combustivel + pedagio + extras,
+        vencimento: vencimentoPagamento,
+        banco: bancoPagamento,
+        unidade: unidadePagamento,
+        aulas,
+        combustivel,
+        pedagio,
+        extras,
+        itensExtras: grupo.extras.map((item) => ({
+          descricao: item.descricao,
+          valor: item.valor,
+        })),
+        lancamentoIds: grupo.lancamentos.map((item) => item.id),
+        extraIds: grupo.extras.map((item) => item.id),
+      };
+    }).filter((pagamento) => pagamento.valor > 0);
+
+    if (!pagamentos.length) {
       alert(
-        "Não existem valores pendentes para este professor no mês."
+        "Não existem valores pendentes neste período. Os itens já pagos ou já vinculados a contas não serão duplicados."
       );
       return;
     }
 
-    if (!bancoPagamento) {
-      alert("Selecione o banco ou conta do pagamento.");
-      return;
-    }
-
-    if (!unidadePagamento) {
-      alert("Selecione a unidade.");
-      return;
-    }
-
-    if (!vencimentoPagamento) {
-      alert("Informe o vencimento da conta.");
-      return;
-    }
-
+    const total = pagamentos.reduce(
+      (soma, pagamento) => soma + pagamento.valor,
+      0
+    );
     if (
       !window.confirm(
-        `Gerar uma conta a pagar de ${moeda(totalPendente)} para ${professorAtual.nome}?`
+        `Gerar ${pagamentos.length} conta(s) a pagar, totalizando ${moeda(total)}?`
       )
     ) {
       return;
     }
 
-    const aulas = pendentes.reduce(
-      (total, item) => total + item.quantidade * item.valorUnitario,
-      0
-    );
-    const combustivel = pendentes.reduce(
-      (total, item) =>
-        total + (item.pagarCombustivel ? item.valorCombustivel : 0),
-      0
-    );
-    const pedagio = pendentes.reduce(
-      (total, item) =>
-        total + (item.pagarPedagio ? item.valorPedagio : 0),
-      0
-    );
-    const extras = extrasPendentes.reduce(
-      (total, item) => total + item.valor,
-      0
-    );
-    const contaId = `conta-professor-${professorAtual.id}-${competencia}-${Date.now()}`;
-    const lancamentoIds = pendentes.map((item) => item.id);
-    const extraIds = extrasPendentes.map((item) => item.id);
+    const lancamentosVinculados = new Map<string, string>();
+    const extrasVinculados = new Map<string, string>();
+    let geradas = 0;
 
-    const salvo = await onRegistrarPagamento({
-      id: contaId,
-      professorId: professorAtual.id,
-      professorNome: professorAtual.nome,
-      competencia,
-      valor: aulas + combustivel + pedagio + extras,
-      vencimento: vencimentoPagamento,
-      banco: bancoPagamento,
-      unidade: unidadePagamento,
-      aulas,
-      combustivel,
-      pedagio,
-      extras,
-      itensExtras: extrasPendentes.map((item) => ({
-        descricao: item.descricao,
-        valor: item.valor,
-      })),
-      lancamentoIds,
-      extraIds,
-    });
+    for (const pagamento of pagamentos) {
+      const salvo = await onRegistrarPagamento(pagamento);
+      if (!salvo) continue;
+      geradas += 1;
+      pagamento.lancamentoIds.forEach((id) =>
+        lancamentosVinculados.set(id, pagamento.id)
+      );
+      pagamento.extraIds.forEach((id) =>
+        extrasVinculados.set(id, pagamento.id)
+      );
+    }
 
-    if (!salvo) return;
+    if (geradas > 0) {
+      setDados((atual) => ({
+        ...atual,
+        lancamentos: atual.lancamentos.map((item) => {
+          const contaPagarId = lancamentosVinculados.get(item.id);
+          return contaPagarId ? { ...item, contaPagarId } : item;
+        }),
+        extras: atual.extras.map((item) => {
+          const contaPagarId = extrasVinculados.get(item.id);
+          return contaPagarId ? { ...item, contaPagarId } : item;
+        }),
+      }));
+    }
 
-    const idsLancamentos = new Set(lancamentoIds);
-    const idsExtras = new Set(extraIds);
-    setDados((atual) => ({
-      ...atual,
-      lancamentos: atual.lancamentos.map((item) =>
-        idsLancamentos.has(item.id)
-          ? { ...item, contaPagarId: contaId }
-          : item
-      ),
-      extras: atual.extras.map((item) =>
-        idsExtras.has(item.id)
-          ? { ...item, contaPagarId: contaId }
-          : item
-      ),
-    }));
-
-    alert("Conta a pagar do professor gerada com sucesso.");
+    alert(
+      geradas === pagamentos.length
+        ? `${geradas} conta(s) a pagar gerada(s) com sucesso.`
+        : `${geradas} de ${pagamentos.length} conta(s) foram geradas. Verifique os avisos apresentados.`
+    );
   };
 
   return (
@@ -2166,63 +2231,6 @@ function Professores({
 
           {administrador && (
             <section
-            style={{
-              ...estilos.caixa,
-              marginTop: 24,
-            }}
-          >
-            <h2>
-              Gerar conta a pagar do professor
-            </h2>
-            <p style={estilos.textoCinza}>
-              Valor pendente:{" "}
-              <strong>
-                {moeda(totalPendente)}
-              </strong>
-            </p>
-            <div style={estilos.formGrid}>
-              <CampoSelect
-                label="Banco / Conta"
-                value={bancoPagamento}
-                onChange={setBancoPagamento}
-                opcoes={configuracoes.bancos.map(
-                  (item) => ({
-                    valor: item,
-                    texto: item,
-                  })
-                )}
-              />
-              <Campo
-                label="Vencimento"
-                value={vencimentoPagamento}
-                onChange={setVencimentoPagamento}
-                type="date"
-              />
-              <CampoSelect
-                label="Unidade"
-                value={unidadePagamento}
-                onChange={setUnidadePagamento}
-                opcoes={configuracoes.unidades.map(
-                  (item) => ({
-                    valor: item,
-                    texto: item,
-                  })
-                )}
-              />
-            </div>
-            <div style={estilos.botoes}>
-              <button
-                onClick={registrarPagamento}
-                style={estilos.botaoPagar}
-              >
-                Gerar conta a pagar
-              </button>
-            </div>
-            </section>
-          )}
-
-          {administrador && (
-            <section
               style={{
                 ...estilos.caixa,
                 marginTop: 24,
@@ -2266,7 +2274,46 @@ function Professores({
                 />
               </div>
 
+              <h3 style={{ marginTop: 26, marginBottom: 0 }}>
+                Transformar o período em contas a pagar
+              </h3>
+              <p style={estilos.textoCinza}>
+                Será criada uma conta para cada professor com valores pendentes no período. Itens já vinculados não serão duplicados.
+              </p>
+              <div style={estilos.formGrid}>
+                <CampoSelect
+                  label="Banco / Conta"
+                  value={bancoPagamento}
+                  onChange={setBancoPagamento}
+                  opcoes={configuracoes.bancos.map((item) => ({
+                    valor: item,
+                    texto: item,
+                  }))}
+                />
+                <CampoSelect
+                  label="Unidade"
+                  value={unidadePagamento}
+                  onChange={setUnidadePagamento}
+                  opcoes={configuracoes.unidades.map((item) => ({
+                    valor: item,
+                    texto: item,
+                  }))}
+                />
+                <Campo
+                  label="Vencimento das contas"
+                  value={vencimentoPagamento}
+                  onChange={setVencimentoPagamento}
+                  type="date"
+                />
+              </div>
+
               <div style={estilos.botoes}>
+                <button
+                  onClick={gerarContasDoRelatorio}
+                  style={estilos.botaoPagar}
+                >
+                  Gerar contas a pagar do período
+                </button>
                 <button
                   onClick={gerarPdfProfessor}
                   style={estilos.botaoPdf}
