@@ -103,6 +103,8 @@ export default function AlunoPerfil({
     );
   const [novaObservacao, setNovaObservacao] =
     useState("");
+  const [mostrarDatasFaltas, setMostrarDatasFaltas] =
+    useState(false);
 
   const matriculas = academico.matriculas.filter(
     (item) => item.aluno_id === aluno.id
@@ -124,6 +126,9 @@ export default function AlunoPerfil({
     registros.length > 0
       ? (presencas / registros.length) * 100
       : 0;
+  const registrosComFalta = registros
+    .filter((item) => item.faltas.includes(aluno.id))
+    .sort((a, b) => b.data.localeCompare(a.data));
   const contrato = contratos[aluno.id];
   const observacoesAluno = useMemo(
     () =>
@@ -288,6 +293,37 @@ export default function AlunoPerfil({
             {registros.length} dia(s) registrado(s):{" "}
             {presencas} presença(s) e {faltas} falta(s).
           </p>
+          {faltas > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setMostrarDatasFaltas((atual) => !atual)}
+                style={estilos.verFaltas}
+              >
+                {mostrarDatasFaltas
+                  ? "Ocultar dias de falta"
+                  : `Ver os ${faltas} dia(s) de falta`}
+              </button>
+              {mostrarDatasFaltas && (
+                <div style={estilos.listaFaltas}>
+                  {registrosComFalta.map((registro) => {
+                    const turmaFalta = academico.turmas.find(
+                      (item) => item.id === registro.turmaId
+                    );
+                    return (
+                      <div key={registro.id} style={estilos.faltaItem}>
+                        <strong>{registro.data.split("-").reverse().join("/")}</strong>
+                        <span>
+                          {turmaFalta?.nome ?? "Turma"}
+                          {turmaFalta?.curso ? ` — ${turmaFalta.curso}` : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -432,6 +468,29 @@ const estilos: Record<string, CSSProperties> = {
     gap: 14,
     padding: "11px 0",
     borderBottom: "1px solid #e2e8f0",
+  },
+  verFaltas: {
+    background: "#b91c1c",
+    color: "white",
+    border: 0,
+    borderRadius: 8,
+    padding: "10px 14px",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  listaFaltas: {
+    marginTop: 10,
+    border: "1px solid #fecaca",
+    borderRadius: 9,
+    overflow: "hidden",
+  },
+  faltaItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: "10px 12px",
+    borderBottom: "1px solid #fee2e2",
+    color: "#991b1b",
   },
   contrato: {
     marginTop: 22,
