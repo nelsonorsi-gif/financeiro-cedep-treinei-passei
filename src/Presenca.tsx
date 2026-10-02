@@ -39,6 +39,8 @@ const hoje = () =>
     timeZone: "America/Sao_Paulo",
   });
 
+const inicioDoMes = () => `${hoje().slice(0, 7)}-01`;
+
 const carregarDados = (): DadosAcademicos => {
   try {
     const salvo = localStorage.getItem(CHAVE_ACADEMICO);
@@ -80,6 +82,9 @@ export default function Presenca({
   const [filtroTurno, setFiltroTurno] = useState("");
   const [filtroTurma, setFiltroTurma] = useState("");
   const [registroAbertoId, setRegistroAbertoId] = useState<string | null>(null);
+  const [turmaRelatorioId, setTurmaRelatorioId] = useState("");
+  const [dataInicialRelatorio, setDataInicialRelatorio] = useState(inicioDoMes);
+  const [dataFinalRelatorio, setDataFinalRelatorio] = useState(hoje);
 
   useEffect(() => {
     const atualizar = () => setDados(carregarDados());
@@ -231,6 +236,48 @@ export default function Presenca({
     janela.document.close();
   };
 
+  const registrosRelatorio = useMemo(
+    () =>
+      (dados.presencas ?? [])
+        .filter((item) => item.turmaId === turmaRelatorioId)
+        .filter(
+          (item) =>
+            (!dataInicialRelatorio || item.data >= dataInicialRelatorio) &&
+            (!dataFinalRelatorio || item.data <= dataFinalRelatorio)
+        ),
+    [dados.presencas, turmaRelatorioId, dataInicialRelatorio, dataFinalRelatorio]
+  );
+
+  const frequenciaPorAluno = useMemo(() => {
+    if (!turmaRelatorioId) return [];
+    const matriculasTurma = dados.matriculas.filter(
+      (matricula) =>
+        matricula.turma_id === turmaRelatorioId &&
+        matricula.status !== "Cancelada"
+    );
+    return matriculasTurma
+      .map((matricula) => {
+        const faltasAluno = registrosRelatorio.filter((registro) =>
+          registro.faltas.includes(matricula.aluno_id)
+        ).length;
+        const totalAulas = registrosRelatorio.length;
+        return {
+          alunoId: matricula.aluno_id,
+          nome: matricula.aluno_nome,
+          totalAulas,
+          faltas: faltasAluno,
+          presencas: Math.max(0, totalAulas - faltasAluno),
+          frequencia: totalAulas
+            ? ((totalAulas - faltasAluno) / totalAulas) * 100
+            : 0,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.faltas - a.faltas || a.nome.localeCompare(b.nome, "pt-BR")
+      );
+  }, [dados.matriculas, turmaRelatorioId, registrosRelatorio]);
+
   const turnosDisponiveis = Array.from(
     new Set(dados.turmas.map((item) => item.turno).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, "pt-BR"));
@@ -337,6 +384,88 @@ export default function Presenca({
       </section>
 
       <section style={{ ...estilos.caixa, marginTop: 22 }}>
+        <h2>Frequência por turma</h2>
+        <p style={estilos.textoCinza}>
+          Selecione o período e a turma. Os alunos com mais faltas aparecem primeiro.
+        </p>
+        <div style={estilos.filtrosRelatorio}>
+          <label style={estilos.campo}>
+            <strong>Data inicial</strong>
+            <input
+              type="date"
+              value={dataInicialRelatorio}
+              onChange={(evento) => setDataInicialRelatorio(evento.target.value)}
+              style={estilos.input}
+            />
+          </label>
+          <label style={estilos.campo}>
+            <strong>Data final</strong>
+            <input
+              type="date"
+              value={dataFinalRelatorio}
+              onChange={(evento) => setDataFinalRelatorio(evento.target.value)}
+              style={estilos.input}
+            />
+          </label>
+          <label style={estilos.campo}>
+            <strong>Turma</strong>
+            <select
+              value={turmaRelatorioId}
+              onChange={(evento) => setTurmaRelatorioId(evento.target.value)}
+              style={estilos.input}
+            >
+              <option value="">Selecione...</option>
+              {turmasAtivas.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.nome} — {item.curso}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {!turmaRelatorioId ? (
+          <div style={estilos.vazio}>Selecione uma turma para visualizar a frequência.</div>
+        ) : frequenciaPorAluno.length === 0 ? (
+          <div style={estilos.vazio}>Nenhum aluno matriculado nesta turma.</div>
+        ) : (
+          <div style={estilos.tabelaContainer}>
+            <table style={estilos.tabela}>
+              <thead>
+                <tr>
+                  <th style={estilos.th}>Posição</th>
+                  <th style={estilos.th}>Aluno</th>
+                  <th style={estilos.th}>Total de aulas</th>
+                  <th style={estilos.th}>Faltas</th>
+                  <th style={estilos.th}>Presenças</th>
+                  <th style={estilos.th}>Frequência</th>
+                </tr>
+              </thead>
+              <tbody>
+                {frequenciaPorAluno.map((aluno, indice) => (
+                  <tr key={aluno.alunoId}>
+                    <td style={estilos.td}>{indice + 1}º</td>
+                    <td style={estilos.td}><strong>{aluno.nome}</strong></td>
+                    <td style={estilos.td}>{aluno.totalAulas}</td>
+                    <td style={{ ...estilos.td, color: aluno.faltas ? "#b91c1c" : "#166534", fontWeight: 700 }}>
+                      {aluno.faltas}
+                    </td>
+                    <td style={{ ...estilos.td, color: "#166534" }}>{aluno.presencas}</td>
+                    <td style={estilos.td}>{aluno.frequencia.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {turmaRelatorioId && (
+          <p style={estilos.textoCinza}>
+            {registrosRelatorio.length} aula(s) registrada(s) no período para esta turma.
+          </p>
+        )}
+      </section>
+
+      <section style={{ ...estilos.caixa, marginTop: 22 }}>
         <h2>Últimos registros</h2>
         <div style={estilos.filtrosHistorico}>
           <label style={estilos.campo}>
@@ -422,6 +551,23 @@ const estilos: Record<string, CSSProperties> = {
     gridTemplateColumns: "minmax(240px, 2fr) minmax(180px, 1fr)",
     gap: 16,
   },
+  filtrosRelatorio: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
+    gap: 12,
+    alignItems: "end",
+    margin: "18px 0",
+  },
+  tabelaContainer: { width: "100%", overflowX: "auto" },
+  tabela: { width: "100%", minWidth: 720, borderCollapse: "collapse" },
+  th: {
+    padding: 11,
+    textAlign: "left",
+    background: "#17233a",
+    color: "white",
+    whiteSpace: "nowrap",
+  },
+  td: { padding: 11, borderBottom: "1px solid #e2e8f0" },
   filtrosHistorico: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
