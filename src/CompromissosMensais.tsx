@@ -584,7 +584,9 @@ export default function CompromissosMensais({
     }
     const formaSelecionada = formaPagamentoBaixa.trim();
     const totalPago = item.valor_pago + pagamento;
-    const valorPrevistoAtualizado = Math.max(item.valor_previsto, totalPago);
+    const valorPrevistoAtualizado = liquidarDiferenca
+      ? totalPago
+      : Math.max(item.valor_previsto, totalPago);
     const concluido = liquidarDiferenca || totalPago >= valorPrevistoAtualizado;
     const dataPagamento = new Date().toISOString().slice(0, 10);
     const { error } = await supabase
