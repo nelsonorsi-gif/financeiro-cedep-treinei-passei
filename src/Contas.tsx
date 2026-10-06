@@ -19,6 +19,7 @@ import {
 } from "./servicos/contasEstruturadas";
 import { mensagemCaixaFechado, registrarMovimentoCaixa, usuarioPodeMovimentar } from "./servicos/caixaOperacional";
 import { calcularTaxaCartao } from "./servicos/taxasCartao";
+import { supabase } from "./lib/supabase";
 
 export type Conta = {
   id: string;
@@ -519,6 +520,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
     const cartao = calcularTaxaCartao(valorRecebido, formaPagamento, parcelasCartao);
     const atualizada: Conta = {
       ...contaBaixa,
+      banco: formaPagamento,
       formaPagamentoBaixa: formaPagamento,
       parcelasCartao: cartao.parcelas,
       taxaCartao: cartao.taxa,
@@ -555,6 +557,27 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
         observacao:
           observacaoDiferenca || observacaoBaixa,
       });
+
+      if (tipo === "pagar" && atualizada.id.startsWith("recorrente-")) {
+        const ocorrenciaId = atualizada.id.slice("recorrente-".length);
+        const valorPrevistoSincronizado =
+          quitarComDiferenca && possuiDiferenca
+            ? novoValorPago
+            : Math.max(totalAtualizado, novoValorPago);
+        const { error: erroSincronizacao } = await supabase
+          .from("ocorrencias_mensais")
+          .update({
+            valor_previsto: valorPrevistoSincronizado,
+            valor_pago: novoValorPago,
+            status: quitada ? "Pago" : "Parcial",
+            data_pagamento: dataPagamento,
+            banco: formaPagamento,
+            atualizado_em: new Date().toISOString(),
+          })
+          .eq("id", ocorrenciaId);
+        if (erroSincronizacao) throw erroSincronizacao;
+      }
+
       registrarMovimentoCaixa(usuarioAtual, {
         natureza: tipo === "receber" ? "entrada" : "saida",
         origem: tipo === "receber" ? "conta_receber" : "conta_pagar",
