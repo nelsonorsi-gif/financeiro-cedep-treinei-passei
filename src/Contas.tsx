@@ -559,6 +559,7 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
       });
 
       if (tipo === "pagar" && atualizada.id.startsWith("recorrente-")) {
+        if (!supabase) throw new Error("Conexão com o banco indisponível.");
         const ocorrenciaId = atualizada.id.slice("recorrente-".length);
         const valorPrevistoSincronizado =
           quitarComDiferenca && possuiDiferenca
