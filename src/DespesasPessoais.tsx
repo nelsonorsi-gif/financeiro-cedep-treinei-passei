@@ -17,7 +17,12 @@ export type DespesaPessoal = {
   categoria?: string;
   formaPagamento?: string;
   observacao?: string;
-  origem?: "avulsa" | "recorrente";
+  origem?: "avulsa" | "recorrente" | "caixa";
+  movimentoCaixaId?: string;
+  caixaId?: string;
+  reclassificadoPorId?: string;
+  reclassificadoPorNome?: string;
+  reclassificadoEm?: string;
 };
 
 const categoriasPadrao = [
