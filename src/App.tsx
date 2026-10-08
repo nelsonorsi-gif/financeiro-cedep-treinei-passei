@@ -753,6 +753,9 @@ function App() {
       null
     );
 
+  const [classificacaoEdicao, setClassificacaoEdicao] =
+    useState<"empresarial" | "pessoal">("empresarial");
+
   const [
     busca,
     setBusca,
@@ -2035,6 +2038,33 @@ function App() {
         return;
       }
 
+      if (
+        tipo === "Saída" &&
+        lancamentoEditando &&
+        classificacaoEdicao === "pessoal"
+      ) {
+        const original = lancamentos.find((item) => item.id === lancamentoEditando);
+        if (!original) {
+          alert("O lançamento selecionado não foi encontrado.");
+          return;
+        }
+        reclassificarSaidaComoPessoal({
+          ...original,
+          data: formulario.data,
+          dia: diaDaData(formulario.data),
+          competencia: competenciaDaData(formulario.data),
+          descricao,
+          saida: valor,
+          tipoSaida: formulario.tipoSaida,
+          formaPagamento: formulario.formaPagamento,
+          unidade: formulario.unidade,
+        });
+        setFormulario(criarFormularioVazio());
+        setLancamentoEditando(null);
+        setClassificacaoEdicao("empresarial");
+        return;
+      }
+
       if (!usuarioPodeMovimentar(usuarioAtual)) {
         if (window.confirm(`${mensagemCaixaFechado}\n\nDeseja abrir o caixa agora?`)) setPagina("Secretaria e Caixa");
         return;
@@ -2200,6 +2230,7 @@ function App() {
       setLancamentoEditando(
         null
       );
+      setClassificacaoEdicao("empresarial");
 
       alert(
         estavaEditando
@@ -2214,6 +2245,11 @@ function App() {
     ) => {
       setLancamentoEditando(
         lancamento.id
+      );
+      setClassificacaoEdicao(
+        lancamento.classificacaoFinanceira === "pessoal"
+          ? "pessoal"
+          : "empresarial"
       );
 
       setFormulario({
@@ -2341,39 +2377,6 @@ function App() {
     });
     window.dispatchEvent(new Event("financeiro-despesas-pessoais-atualizadas"));
     alert("Saída transferida para Despesas Pessoais. O caixa original não foi alterado.");
-  };
-
-  const reclassificarMovimentoCaixaComoPessoal = (
-    movimento: import("./servicos/caixaOperacional").MovimentoCaixa,
-    caixaId: string,
-    unidade: string
-  ) => {
-    const existente = lancamentos.find((item) =>
-      item.movimentoCaixaId === movimento.id ||
-      item.id === movimento.origemId ||
-      item.contaId === movimento.origemId
-    );
-    const data = dataLocalDoMovimento(movimento.dataHora);
-    reclassificarSaidaComoPessoal(
-      existente ?? {
-        id: `secretaria-${movimento.origemId}`,
-        dia: diaDaData(data),
-        data,
-        competencia: competenciaDaData(data),
-        descricao: movimento.descricao,
-        tipoEntrada: "",
-        tipoSaida: movimento.tipoSaida || "Despesa",
-        formaPagamento: movimento.formaPagamento,
-        entrada: 0,
-        saida: movimento.valor,
-        unidade,
-        origem: "manual",
-        caixaId,
-        movimentoCaixaId: movimento.id,
-        usuarioResponsavelId: movimento.usuarioId,
-        usuarioResponsavelNome: movimento.usuarioNome,
-      }
-    );
   };
 
   const excluirLancamento =
@@ -2619,6 +2622,7 @@ function App() {
       setLancamentoEditando(
         null
       );
+      setClassificacaoEdicao("empresarial");
     };
 
   /* =======================================================
@@ -3908,12 +3912,6 @@ function App() {
                     editarLancamento
                   }
 
-                  reclassificarParaPessoal={
-                    usuarioAtual.perfil === "Administrador"
-                      ? reclassificarSaidaComoPessoal
-                      : undefined
-                  }
-
                   excluirLancamento={
                     excluirLancamento
                   }
@@ -4120,7 +4118,6 @@ function App() {
             }
             onEstornarMovimento={estornarMovimentoDaSecretaria}
             onExcluirMovimento={excluirMovimentoDaSecretaria}
-            onReclassificarMovimentoPessoal={reclassificarMovimentoCaixaComoPessoal}
           />
         )}
 
@@ -4267,6 +4264,13 @@ function App() {
               editando={Boolean(
                 lancamentoEditando
               )}
+
+              classificacaoEdicao={classificacaoEdicao}
+              setClassificacaoEdicao={setClassificacaoEdicao}
+              podeReclassificar={
+                usuarioAtual.perfil === "Administrador" &&
+                Boolean(lancamentoEditando)
+              }
 
               cancelarEdicao={
                 cancelarEdicao
@@ -5122,6 +5126,12 @@ function FormularioLancamento({
 
   editando,
 
+  classificacaoEdicao = "empresarial",
+
+  setClassificacaoEdicao,
+
+  podeReclassificar = false,
+
   cancelarEdicao,
 
   configuracoes,
@@ -5140,6 +5150,14 @@ function FormularioLancamento({
   salvar: () => void;
 
   editando: boolean;
+
+  classificacaoEdicao?: "empresarial" | "pessoal";
+
+  setClassificacaoEdicao?: Dispatch<
+    SetStateAction<"empresarial" | "pessoal">
+  >;
+
+  podeReclassificar?: boolean;
 
   cancelarEdicao:
     () => void;
@@ -5353,6 +5371,18 @@ function FormularioLancamento({
             )
           }
         />
+
+        {tipo === "Saída" && editando && podeReclassificar && setClassificacaoEdicao && (
+          <CampoSelect
+            label="Classificação financeira"
+            value={classificacaoEdicao === "pessoal" ? "Pessoal" : "Empresarial"}
+            opcoes={["Empresarial", "Pessoal"]}
+            onChange={(valor) =>
+              setClassificacaoEdicao(valor === "Pessoal" ? "pessoal" : "empresarial")
+            }
+            semOpcaoVazia
+          />
+        )}
       </div>
 
       <div
