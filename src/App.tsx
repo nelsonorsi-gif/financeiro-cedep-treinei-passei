@@ -112,6 +112,11 @@ type Lancamento = {
   taxaCartao?: number;
   valorLiquidoCartao?: number;
   parcelasCartao?: number;
+  classificacaoFinanceira?: "empresarial" | "pessoal";
+  reclassificadoPorId?: string;
+  reclassificadoPorNome?: string;
+  reclassificadoEm?: string;
+  motivoReclassificacao?: string;
 };
 
 const carregarDespesasPessoais =
@@ -1196,7 +1201,10 @@ function App() {
   const lancamentosFinanceiros =
     useMemo(
       () => lancamentos.filter(
-        (item) => !item.estornadoEm && !item.estornoDeId
+        (item) =>
+          !item.estornadoEm &&
+          !item.estornoDeId &&
+          item.classificacaoFinanceira !== "pessoal"
       ),
       [lancamentos]
     );
@@ -2256,6 +2264,85 @@ function App() {
         behavior: "smooth",
       });
     };
+
+  const reclassificarSaidaComoPessoal = (lancamento: Lancamento) => {
+    if (!usuarioAtual || usuarioAtual.perfil !== "Administrador") {
+      alert("Somente o Administrador pode reclassificar uma saída como despesa pessoal.");
+      return;
+    }
+    if (lancamento.saida <= 0 || lancamento.estornoDeId || lancamento.estornadoEm) {
+      alert("Somente saídas ativas podem ser reclassificadas.");
+      return;
+    }
+
+    const categoria = window.prompt(
+      "Informe a categoria da despesa pessoal:",
+      lancamento.tipoSaida || "Outros"
+    );
+    if (!categoria?.trim()) return;
+
+    const motivo = window.prompt(
+      "Informe o motivo obrigatório da reclassificação:",
+      "Saída registrada pela Secretaria que pertence às despesas pessoais."
+    );
+    if (!motivo?.trim()) return;
+
+    if (!window.confirm(
+      "Esta saída deixará de compor as despesas da escola e passará para Despesas Pessoais. O movimento do caixa será preservado. Deseja continuar?"
+    )) return;
+
+    const identificadorOrigem = lancamento.movimentoCaixaId || lancamento.id;
+    const idPessoal = `pessoal-caixa-${identificadorOrigem}`;
+    const registroPessoal: DespesaPessoal = {
+      id: idPessoal,
+      competencia: lancamento.competencia || competenciaDaData(lancamento.data),
+      descricao: lancamento.descricao,
+      valorPrevisto: lancamento.saida,
+      valorPago: lancamento.saida,
+      status: "Pago",
+      vencimento: lancamento.data,
+      categoria: categoria.trim(),
+      formaPagamento: lancamento.formaPagamento,
+      observacao: [
+        motivo.trim(),
+        `Reclassificada do caixa ${lancamento.caixaId || "registrado"} sem alterar sua movimentação.`,
+      ].join(" | "),
+      origem: "caixa",
+      movimentoCaixaId: lancamento.movimentoCaixaId,
+      caixaId: lancamento.caixaId,
+      reclassificadoPorId: usuarioAtual.id,
+      reclassificadoPorNome: usuarioAtual.nome,
+      reclassificadoEm: new Date().toISOString(),
+    };
+
+    const pessoaisAtuais = carregarDespesasPessoais();
+    const jaExiste = pessoaisAtuais.some((item) => item.id === idPessoal);
+    const pessoaisAtualizadas = jaExiste
+      ? pessoaisAtuais.map((item) => item.id === idPessoal ? registroPessoal : item)
+      : [...pessoaisAtuais, registroPessoal];
+
+    localStorage.setItem(
+      "financeiro-cedep-despesas-pessoais",
+      JSON.stringify(pessoaisAtualizadas)
+    );
+    setDespesasPessoais(pessoaisAtualizadas);
+    setLancamentos((atuais) =>
+      atuais.map((item) =>
+        item.id === lancamento.id
+          ? {
+              ...item,
+              classificacaoFinanceira: "pessoal",
+              reclassificadoPorId: usuarioAtual.id,
+              reclassificadoPorNome: usuarioAtual.nome,
+              reclassificadoEm: new Date().toISOString(),
+              motivoReclassificacao: motivo.trim(),
+            }
+          : item
+      )
+    );
+    window.dispatchEvent(new Event("financeiro-despesas-pessoais-atualizadas"));
+    alert("Saída transferida para Despesas Pessoais. O caixa original não foi alterado.");
+  };
 
   const excluirLancamento =
     (
@@ -3787,6 +3874,12 @@ function App() {
 
                   editarLancamento={
                     editarLancamento
+                  }
+
+                  reclassificarParaPessoal={
+                    usuarioAtual.perfil === "Administrador"
+                      ? reclassificarSaidaComoPessoal
+                      : undefined
                   }
 
                   excluirLancamento={
@@ -5746,6 +5839,8 @@ function Tabela({
 
   estornarLancamento,
 
+  reclassificarParaPessoal,
+
   paginar = false,
 
   ocultarValores = false,
@@ -5766,6 +5861,8 @@ function Tabela({
   ) => void;
 
   estornarLancamento?: (lancamento: Lancamento) => void;
+
+  reclassificarParaPessoal?: (lancamento: Lancamento) => void;
 
   paginar?: boolean;
 
@@ -6044,7 +6141,8 @@ function Tabela({
                 </td>
 
                 {(editarLancamento ||
-                  excluirLancamento) && (
+                  excluirLancamento ||
+                  reclassificarParaPessoal) && (
                   <td
                     style={
                       estilos.td
@@ -6058,6 +6156,18 @@ function Tabela({
                         gap: 7,
                       }}
                     >
+                      {reclassificarParaPessoal &&
+                        item.saida > 0 &&
+                        !item.estornoDeId &&
+                        !item.estornadoEm && (
+                        <button
+                          onClick={() => reclassificarParaPessoal(item)}
+                          style={estilos.botaoEditar}
+                        >
+                          Tornar pessoal
+                        </button>
+                      )}
+
                       {editarLancamento && (
                         <button
                           onClick={() =>
