@@ -2326,22 +2326,54 @@ function App() {
       JSON.stringify(pessoaisAtualizadas)
     );
     setDespesasPessoais(pessoaisAtualizadas);
-    setLancamentos((atuais) =>
-      atuais.map((item) =>
-        item.id === lancamento.id
-          ? {
-              ...item,
-              classificacaoFinanceira: "pessoal",
-              reclassificadoPorId: usuarioAtual.id,
-              reclassificadoPorNome: usuarioAtual.nome,
-              reclassificadoEm: new Date().toISOString(),
-              motivoReclassificacao: motivo.trim(),
-            }
-          : item
-      )
-    );
+    setLancamentos((atuais) => {
+      const reclassificado: Lancamento = {
+        ...lancamento,
+        classificacaoFinanceira: "pessoal",
+        reclassificadoPorId: usuarioAtual.id,
+        reclassificadoPorNome: usuarioAtual.nome,
+        reclassificadoEm: new Date().toISOString(),
+        motivoReclassificacao: motivo.trim(),
+      };
+      return atuais.some((item) => item.id === lancamento.id)
+        ? atuais.map((item) => item.id === lancamento.id ? reclassificado : item)
+        : [...atuais, reclassificado];
+    });
     window.dispatchEvent(new Event("financeiro-despesas-pessoais-atualizadas"));
     alert("Saída transferida para Despesas Pessoais. O caixa original não foi alterado.");
+  };
+
+  const reclassificarMovimentoCaixaComoPessoal = (
+    movimento: import("./servicos/caixaOperacional").MovimentoCaixa,
+    caixaId: string,
+    unidade: string
+  ) => {
+    const existente = lancamentos.find((item) =>
+      item.movimentoCaixaId === movimento.id ||
+      item.id === movimento.origemId ||
+      item.contaId === movimento.origemId
+    );
+    const data = dataLocalDoMovimento(movimento.dataHora);
+    reclassificarSaidaComoPessoal(
+      existente ?? {
+        id: `secretaria-${movimento.origemId}`,
+        dia: diaDaData(data),
+        data,
+        competencia: competenciaDaData(data),
+        descricao: movimento.descricao,
+        tipoEntrada: "",
+        tipoSaida: movimento.tipoSaida || "Despesa",
+        formaPagamento: movimento.formaPagamento,
+        entrada: 0,
+        saida: movimento.valor,
+        unidade,
+        origem: "manual",
+        caixaId,
+        movimentoCaixaId: movimento.id,
+        usuarioResponsavelId: movimento.usuarioId,
+        usuarioResponsavelNome: movimento.usuarioNome,
+      }
+    );
   };
 
   const excluirLancamento =
@@ -4088,6 +4120,7 @@ function App() {
             }
             onEstornarMovimento={estornarMovimentoDaSecretaria}
             onExcluirMovimento={excluirMovimentoDaSecretaria}
+            onReclassificarMovimentoPessoal={reclassificarMovimentoCaixaComoPessoal}
           />
         )}
 
