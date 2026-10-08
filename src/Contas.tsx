@@ -1187,7 +1187,8 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
                     return "Taxa: " + moeda(calculo.taxa) + " • Líquido previsto: " + moeda(calculo.liquido);
                   })()}
                 </div>
-              )}              {tipo === "pagar" && (
+              )}              {(tipo === "pagar" ||
+                (tipo === "receber" && contaBaixa && contaMensalidade(contaBaixa))) && (
                 <label style={estilos.opcaoQuitacao}>
                   <input
                     type="checkbox"
@@ -1196,17 +1197,21 @@ function Contas({ tipo, onBaixar, onEstornar, usuarioAtual, onAbrirCaixa, contaI
                   />
                   <span>
                     <strong>Quitar com valor diferente</strong>
-                    <small>Permite pagar um valor menor ou maior e encerrar a conta sem saldo residual.</small>
+                    <small>
+                      {tipo === "receber"
+                        ? "Permite receber um valor menor ou maior e quitar a mensalidade sem saldo residual."
+                        : "Permite pagar um valor menor ou maior e encerrar a conta sem saldo residual."}
+                    </small>
                   </span>
                 </label>
               )}
               <CampoTexto
-                label={quitarComDiferenca && tipo === "pagar" ? "Observação obrigatória da diferença" : "Observação da baixa"}
+                label={quitarComDiferenca ? "Justificativa obrigatória da quitação" : "Observação da baixa"}
                 value={observacaoBaixa}
                 onChange={
                   setObservacaoBaixa
                 }
-                placeholder={quitarComDiferenca && tipo === "pagar" ? "Explique o motivo da diferença" : "Opcional"}
+                placeholder={quitarComDiferenca ? "Explique o motivo da quitação com valor diferente" : "Opcional"}
               />
             </div>
             <div style={estilos.botoes}>
