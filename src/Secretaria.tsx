@@ -74,6 +74,11 @@ type Props = {
   ) => void;
   onEstornarMovimento: (movimento: MovimentoCaixa, motivo: string, estornoId: string) => Promise<void>;
   onExcluirMovimento: (movimento: MovimentoCaixa) => void;
+  onReclassificarMovimentoPessoal: (
+    movimento: MovimentoCaixa,
+    caixaId: string,
+    unidade: string
+  ) => void;
 };
 
 export const CHAVE_SECRETARIA =
@@ -212,6 +217,7 @@ function Secretaria({
   onRegistrarReceita,
   onEstornarMovimento,
   onExcluirMovimento,
+  onReclassificarMovimentoPessoal,
 }: Props) {
   const [sessoes, setSessoes] =
     useState<SessaoCaixa[]>([]);
@@ -1194,7 +1200,9 @@ function Secretaria({
                     <th style={estilos.th}>Entrada</th>
                     <th style={estilos.th}>Saída</th>
                     <th style={estilos.th}>Unidade</th>
-                    {podeAlterarMovimentos && <th style={estilos.th}>Ações</th>}
+                    {(podeAlterarMovimentos || usuarioAtual.perfil === "Administrador") && (
+                      <th style={estilos.th}>Ações</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -1226,15 +1234,35 @@ function Secretaria({
                             {!entrada ? moeda(movimento.valor) : ""}
                           </td>
                           <td style={estilos.td}>{caixaVisualizado.unidade}</td>
-                          {podeAlterarMovimentos && (
+                          {(podeAlterarMovimentos || usuarioAtual.perfil === "Administrador") && (
                             <td style={estilos.td}>
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                <button style={estilos.botaoSecundario} onClick={() => editarMovimento(movimento)}>Editar</button>
-                                {!movimento.natureza.startsWith("estorno") && (
-                                  <button style={estilos.botaoAlerta} onClick={() => estornarMovimento(movimento)}>Estornar</button>
+                                {podeAlterarMovimentos && (
+                                  <>
+                                    <button style={estilos.botaoSecundario} onClick={() => editarMovimento(movimento)}>Editar</button>
+                                    {!movimento.natureza.startsWith("estorno") && (
+                                      <button style={estilos.botaoAlerta} onClick={() => estornarMovimento(movimento)}>Estornar</button>
+                                    )}
+                                    {movimento.origem === "secretaria" && (
+                                      <button style={estilos.botaoVermelho} onClick={() => excluirMovimento(movimento)}>Excluir</button>
+                                    )}
+                                  </>
                                 )}
-                                {movimento.origem === "secretaria" && (
-                                  <button style={estilos.botaoVermelho} onClick={() => excluirMovimento(movimento)}>Excluir</button>
+                                {usuarioAtual.perfil === "Administrador" &&
+                                  !entrada &&
+                                  !movimento.natureza.startsWith("estorno") && (
+                                  <button
+                                    style={estilos.botaoSecundario}
+                                    onClick={() =>
+                                      onReclassificarMovimentoPessoal(
+                                        movimento,
+                                        caixaVisualizado.id,
+                                        caixaVisualizado.unidade
+                                      )
+                                    }
+                                  >
+                                    Tornar pessoal
+                                  </button>
                                 )}
                               </div>
                             </td>
