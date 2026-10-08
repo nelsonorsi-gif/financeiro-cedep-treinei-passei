@@ -5380,7 +5380,6 @@ function FormularioLancamento({
             onChange={(valor) =>
               setClassificacaoEdicao(valor === "Pessoal" ? "pessoal" : "empresarial")
             }
-            semOpcaoVazia
           />
         )}
       </div>
