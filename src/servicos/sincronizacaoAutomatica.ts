@@ -622,6 +622,15 @@ export function iniciarSincronizacaoAutomatica(
     }
   };
 
+  const sincronizarCaixaImediatamente = () => {
+    void sincronizar();
+  };
+
+  window.addEventListener(
+    "financeiro-caixa-atualizado",
+    sincronizarCaixaImediatamente
+  );
+
   const intervalo =
     window.setInterval(
       () => {
@@ -722,6 +731,10 @@ export function iniciarSincronizacaoAutomatica(
     .subscribe();
 
   return () => {
+    window.removeEventListener(
+      "financeiro-caixa-atualizado",
+      sincronizarCaixaImediatamente
+    );
     window.clearInterval(
       intervalo
     );
