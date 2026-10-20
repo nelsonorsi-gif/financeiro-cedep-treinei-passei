@@ -429,27 +429,42 @@ export async function prepararSincronizacaoInicial(
 
   let alterou = false;
 
-  registros.forEach(
-    (registro) => {
-      const valorAtual =
-        lerValorLocal(
-          registro.chave
-        );
+  for (const registro of registros) {
+    const valorAtual =
+      lerValorLocal(
+        registro.chave
+      );
 
-      if (
-        serializar(valorAtual) !==
-        serializar(
-          registro.valor
-        )
-      ) {
-        salvarValorLocal(
-          registro.chave,
-          registro.valor
-        );
-        alterou = true;
-      }
+    const valorAplicado =
+      registro.chave === "financeiro-cedep-investimentos" &&
+      Array.isArray(valorAtual) &&
+      Array.isArray(registro.valor)
+        ? mesclarListaPendente([], valorAtual, registro.valor)
+        : registro.valor;
+
+    if (
+      registro.chave === "financeiro-cedep-investimentos" &&
+      podeEditar &&
+      serializar(valorAplicado) !== serializar(registro.valor)
+    ) {
+      await salvarChaveCompartilhada(
+        registro.chave,
+        valorAplicado,
+        usuarioId
+      );
     }
-  );
+
+    if (
+      serializar(valorAtual) !==
+      serializar(valorAplicado)
+    ) {
+      salvarValorLocal(
+        registro.chave,
+        valorAplicado
+      );
+      alterou = true;
+    }
+  }
 
   localStorage.setItem(
     "financeiro-cedep-ultima-sincronizacao",
