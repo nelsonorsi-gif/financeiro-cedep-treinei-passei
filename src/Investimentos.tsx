@@ -49,6 +49,31 @@ const numero = (valor: string) => {
   return Number.isFinite(convertido) ? convertido : 0;
 };
 
+const normalizarNome = (valor: string) =>
+  valor
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("pt-BR");
+
+const escolherRotulo = (atual: string | undefined, candidato: string) => {
+  const limpo = candidato.trim().replace(/\s+/g, " ");
+  if (!atual) return limpo;
+  const atualEmMaiusculas = atual === atual.toLocaleUpperCase("pt-BR");
+  const candidatoEmMaiusculas = limpo === limpo.toLocaleUpperCase("pt-BR");
+  return atualEmMaiusculas && !candidatoEmMaiusculas ? limpo : atual;
+};
+
+const valoresUnicos = (valores: string[]) => {
+  const mapa = new Map<string, string>();
+  valores.filter(Boolean).forEach((valor) => {
+    const chave = normalizarNome(valor);
+    mapa.set(chave, escolherRotulo(mapa.get(chave), valor));
+  });
+  return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, "pt-BR"));
+};
+
 export const carregarInvestimentos = (): Investimento[] => {
   try {
     const valor = JSON.parse(localStorage.getItem(CHAVE_INVESTIMENTOS) || "[]");
@@ -126,21 +151,22 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
   );
 
   const bancos = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...configuracoes.bancos,
-          ...itens.map((item) => item.banco),
-        ].filter(Boolean))
-      ).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    () => valoresUnicos([
+      ...configuracoes.bancos,
+      ...itens.map((item) => item.banco),
+    ]),
     [configuracoes.bancos, itens]
   );
 
   const tipos = useMemo(
-    () =>
-      Array.from(new Set([...tiposPadrao, ...itens.map((item) => item.tipo)])).sort(
-        (a, b) => a.localeCompare(b, "pt-BR")
-      ),
+    () => valoresUnicos([...tiposPadrao, ...itens.map((item) => item.tipo)]),
+    [itens]
+  );
+
+  const carteirasConhecidas = useMemo(
+    () => valoresUnicos(
+      itens.map((item) => item.carteira?.trim() || item.descricao?.trim() || item.tipo)
+    ),
     [itens]
   );
 
@@ -150,8 +176,8 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
         .filter(
           (item) =>
             (competencia === "Todas" || item.competencia === competencia) &&
-            (tipo === "Todos" || item.tipo === tipo) &&
-            (banco === "Todos" || item.banco === banco)
+            (tipo === "Todos" || normalizarNome(item.tipo) === normalizarNome(tipo)) &&
+            (banco === "Todos" || normalizarNome(item.banco) === normalizarNome(banco))
         )
         .sort((a, b) => b.data.localeCompare(a.data) || b.criadoEm.localeCompare(a.criadoEm)),
     [itens, competencia, tipo, banco]
@@ -171,13 +197,18 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
     const mapa = new Map<string, { chave: string; nome: string; tipo: string; banco: string; acumulado: number; periodo: number }>();
     const itensDaCarteira = itens.filter(
       (item) =>
-        (tipo === "Todos" || item.tipo === tipo) &&
-        (banco === "Todos" || item.banco === banco)
+        (tipo === "Todos" || normalizarNome(item.tipo) === normalizarNome(tipo)) &&
+        (banco === "Todos" || normalizarNome(item.banco) === normalizarNome(banco))
     );
     itensDaCarteira.forEach((item) => {
       const nome = item.carteira?.trim() || item.descricao?.trim() || item.tipo;
-      const chave = [item.tipo, item.banco, nome].join("::");
-      const atual = mapa.get(chave) || {
+      const chave = [
+        normalizarNome(item.tipo),
+        normalizarNome(item.banco),
+        normalizarNome(nome),
+      ].join("::");
+      const existente = mapa.get(chave);
+      const atual = existente || {
         chave,
         nome,
         tipo: item.tipo,
@@ -185,6 +216,9 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
         acumulado: 0,
         periodo: 0,
       };
+      atual.nome = escolherRotulo(atual.nome, nome);
+      atual.tipo = escolherRotulo(atual.tipo, item.tipo);
+      atual.banco = escolherRotulo(atual.banco, item.banco);
       const impacto = item.operacao === "Resgate" ? -item.valor : item.valor;
       atual.acumulado += impacto;
       if (competencia === "Todas" || item.competencia === competencia) {
@@ -208,13 +242,22 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
     }
     const agora = new Date().toISOString();
     const anterior = itens.find((item) => item.id === editandoId);
+    const carteiraDigitada = formulario.carteira.trim().replace(/\s+/g, " ");
+    const carteiraExistente = itens.find(
+      (item) =>
+        normalizarNome(item.carteira?.trim() || item.descricao?.trim() || item.tipo) ===
+        normalizarNome(carteiraDigitada)
+    );
+    const nomeCarteira = carteiraExistente?.carteira?.trim() ||
+      carteiraExistente?.descricao?.trim() ||
+      carteiraDigitada;
     const registro: Investimento = {
       id: editandoId || `investimento-${Date.now()}-${Math.random()}`,
       data: formulario.data,
       competencia: competenciaDaData(formulario.data),
       tipo: formulario.tipo,
       banco: formulario.banco,
-      carteira: formulario.carteira.trim(),
+      carteira: nomeCarteira,
       operacao: formulario.operacao,
       descricao: formulario.descricao.trim(),
       valor,
@@ -279,7 +322,7 @@ export default function Investimentos({ usuarioAtual }: { usuarioAtual: UsuarioS
           <label style={estilos.campo}><strong>Operação</strong><select value={formulario.operacao} onChange={(e) => atualizarCampo("operacao", e.target.value as OperacaoInvestimento)} style={estilos.input}><option>Aporte</option><option>Resgate</option><option>Rendimento</option></select></label>
           <label style={estilos.campo}><strong>Tipo</strong><select value={formulario.tipo} onChange={(e) => atualizarCampo("tipo", e.target.value)} style={estilos.input}>{tipos.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label style={estilos.campo}><strong>Banco</strong><select value={formulario.banco} onChange={(e) => atualizarCampo("banco", e.target.value)} style={estilos.input}><option value="">Selecione...</option>{bancos.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label style={estilos.campo}><strong>Carteira / titular</strong><input value={formulario.carteira} onChange={(e) => atualizarCampo("carteira", e.target.value)} placeholder="Ex.: Nelson, Camila ou Consórcio veículo" style={estilos.input} /></label>
+          <label style={estilos.campo}><strong>Carteira / titular</strong><input list="carteiras-investimentos" value={formulario.carteira} onChange={(e) => atualizarCampo("carteira", e.target.value)} placeholder="Digite ou selecione; maiúsculas e minúsculas são ignoradas" style={estilos.input} /><datalist id="carteiras-investimentos">{carteirasConhecidas.map((item) => <option key={normalizarNome(item)} value={item} />)}</datalist></label>
           <label style={estilos.campo}><strong>Valor</strong><input value={formulario.valor} onChange={(e) => atualizarCampo("valor", e.target.value)} placeholder="Ex.: 500,00" style={estilos.input} /></label>
           <label style={{ ...estilos.campo, gridColumn: "span 2" }}><strong>Descrição opcional</strong><input value={formulario.descricao} onChange={(e) => atualizarCampo("descricao", e.target.value)} placeholder="Ex.: aporte mensal ou identificação do plano" style={estilos.input} /></label>
         </div>
