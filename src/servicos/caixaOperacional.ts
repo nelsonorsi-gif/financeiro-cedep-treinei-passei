@@ -1,4 +1,5 @@
 import type { UsuarioSessao } from "../Acesso";
+import { supabase, supabaseConfigurado } from "../lib/supabase";
 
 export const CHAVE_CAIXA = "financeiro-cedep-secretaria";
 export const EVENTO_CAIXA_ATUALIZADO = "financeiro-caixa-atualizado";
@@ -88,6 +89,30 @@ const salvar = (dados: DadosCaixa) => {
   window.dispatchEvent(new Event(EVENTO_CAIXA_ATUALIZADO));
 };
 
+const persistirMovimentoImediatamente = (
+  caixaId: string,
+  movimento: MovimentoCaixa,
+  usuarioId: string
+) => {
+  if (!supabaseConfigurado || !supabase) return;
+
+  void supabase
+    .rpc("registrar_movimento_caixa_erp", {
+      p_caixa_id: caixaId,
+      p_movimento: movimento,
+      p_updated_by: usuarioId,
+    })
+    .then(({ error }) => {
+      if (!error) return;
+      console.error("Erro ao confirmar o movimento do caixa:", error);
+      window.dispatchEvent(
+        new CustomEvent("financeiro-sincronizacao-erro", {
+          detail: { erro: error },
+        })
+      );
+    });
+};
+
 export const obterCaixaAbertoDoUsuario = (usuario: UsuarioSessao) => {
   if (usuario.perfil === "Administrador") return null;
   return carregar().sessoes.find(
@@ -138,6 +163,7 @@ export const registrarMovimentoCaixa = (
       : sessao
   );
   salvar(dados);
+  persistirMovimentoImediatamente(caixa.id, registro, usuario.id);
   return { ...registro, caixaId: caixa.id, administrativoSemCaixa: false };
 };
 
