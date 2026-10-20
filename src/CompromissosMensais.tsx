@@ -609,7 +609,7 @@ export default function CompromissosMensais({
     if (destinoInvestimento) {
       const agora = new Date().toISOString();
       const registro: Investimento = {
-        id: `investimento-recorrente-${item.id}-${Date.now()}`,
+        id: `investimento-recorrente-${item.id}`,
         data: dataPagamento,
         competencia: dataPagamento.slice(0, 7).split("-").reverse().join("/"),
         tipo: destinoInvestimento.tipo,
