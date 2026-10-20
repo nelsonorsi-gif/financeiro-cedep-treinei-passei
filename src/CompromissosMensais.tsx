@@ -662,14 +662,23 @@ export default function CompromissosMensais({
 
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return ocorrencias.filter(
-      (item) =>
-        (filtro === "Todos" || item.escopo === filtro || item.status === filtro || (filtro === "Investimento" && ehInvestimento(item.categoria))) &&
-        (filtroCategoria === "Todas" || item.categoria === filtroCategoria) &&
-        (filtroBeneficiario === "Todos" ||
-          item.beneficiario === filtroBeneficiario) &&
-        (!termo || `${item.descricao} ${item.beneficiario}`.toLowerCase().includes(termo))
-    );
+    return ocorrencias
+      .filter(
+        (item) =>
+          (filtro === "Todos" || item.escopo === filtro || item.status === filtro || (filtro === "Investimento" && ehInvestimento(item.categoria))) &&
+          (filtroCategoria === "Todas" || item.categoria === filtroCategoria) &&
+          (filtroBeneficiario === "Todos" ||
+            item.beneficiario === filtroBeneficiario) &&
+          (!termo || `${item.descricao} ${item.beneficiario}`.toLowerCase().includes(termo))
+      )
+      .sort((a, b) => {
+        const concluidoA = a.status === "Pago" || a.status === "Dispensado" ? 1 : 0;
+        const concluidoB = b.status === "Pago" || b.status === "Dispensado" ? 1 : 0;
+        if (concluidoA !== concluidoB) return concluidoA - concluidoB;
+        const dataA = a.data_pagamento || a.vencimento;
+        const dataB = b.data_pagamento || b.vencimento;
+        return dataB.localeCompare(dataA) || b.vencimento.localeCompare(a.vencimento);
+      });
   }, [busca, filtro, filtroCategoria, filtroBeneficiario, ocorrencias]);
 
   const categoriasFiltro = useMemo(
@@ -809,31 +818,6 @@ export default function CompromissosMensais({
       </section>
 
       <section style={{ ...estilos.caixa, marginTop: 24 }}>
-        <h2>Modelos que se repetem</h2>
-        <div style={estilos.modelos}>
-          {compromissos.filter((item) => !item.fim).map((item) => (
-            <div key={item.id} style={estilos.modelo}>
-              <div>
-                <strong>{item.descricao}</strong>
-                <div style={estilos.textoCinza}>
-                  {ehInvestimento(item.categoria) ? `Investimento • ${lerDestinoInvestimento(item.categoria)?.tipo} • ${lerDestinoInvestimento(item.categoria)?.carteira}` : item.escopo} • dia {item.dia_vencimento} • {moeda(Number(item.valor_padrao))}
-                  {item.numero_parcelas ? ` • ${item.numero_parcelas} parcela(s)` : " • sem limite"}
-                  {item.beneficiario ? ` • ${item.beneficiario}` : ""}
-                </div>
-              </div>
-              <div style={estilos.acoesLinha}>
-                <button style={estilos.botaoSecundario} onClick={() => editarCompromisso(item)}>Editar</button>
-                <button style={estilos.botaoSecundario} onClick={() => alternarAtivo(item)}>
-                  {item.ativo ? "Pausar" : "Reativar"}
-                </button>
-                <button style={estilos.botaoExcluir} onClick={() => void excluirCompromisso(item)}>Excluir</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section style={{ ...estilos.caixa, marginTop: 24 }}>
         <div style={estilos.topoLista}>
           <h2>Checklist do mês</h2>
           <input style={estilos.inputBusca} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar conta, funcionário ou professor..." />
@@ -897,6 +881,31 @@ export default function CompromissosMensais({
           </table>
         </div>
       </section>
+      <section style={{ ...estilos.caixa, marginTop: 24 }}>
+        <h2>Modelos que se repetem</h2>
+        <div style={estilos.modelos}>
+          {compromissos.filter((item) => !item.fim).map((item) => (
+            <div key={item.id} style={estilos.modelo}>
+              <div>
+                <strong>{item.descricao}</strong>
+                <div style={estilos.textoCinza}>
+                  {ehInvestimento(item.categoria) ? `Investimento • ${lerDestinoInvestimento(item.categoria)?.tipo} • ${lerDestinoInvestimento(item.categoria)?.carteira}` : item.escopo} • dia {item.dia_vencimento} • {moeda(Number(item.valor_padrao))}
+                  {item.numero_parcelas ? ` • ${item.numero_parcelas} parcela(s)` : " • sem limite"}
+                  {item.beneficiario ? ` • ${item.beneficiario}` : ""}
+                </div>
+              </div>
+              <div style={estilos.acoesLinha}>
+                <button style={estilos.botaoSecundario} onClick={() => editarCompromisso(item)}>Editar</button>
+                <button style={estilos.botaoSecundario} onClick={() => alternarAtivo(item)}>
+                  {item.ativo ? "Pausar" : "Reativar"}
+                </button>
+                <button style={estilos.botaoExcluir} onClick={() => void excluirCompromisso(item)}>Excluir</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {pagamentoEmAndamento && (
         <div style={estilos.modalFundo} role="dialog" aria-modal="true" aria-label="Efetuar pagamento">
           <section style={estilos.modal}>
