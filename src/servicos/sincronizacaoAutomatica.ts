@@ -127,7 +127,8 @@ const mesclarAlteracoesLocaisPendentes = (
 ) => {
   if (
     chave === "financeiro-cedep-lancamentos" ||
-    chave === "financeiro-cedep-despesas-pessoais"
+    chave === "financeiro-cedep-despesas-pessoais" ||
+    chave === "financeiro-cedep-investimentos"
   ) {
     return mesclarListaPendente(baseAnterior, valorLocal, valorRemoto);
   }
@@ -200,7 +201,8 @@ const calcularRemocoes = (
       return { registros: Object.keys(antes).filter((alunoId) => !(alunoId in depois)) };
     }
     const campos = chave === "financeiro-cedep-lancamentos" ||
-      chave === "financeiro-cedep-despesas-pessoais"
+      chave === "financeiro-cedep-despesas-pessoais" ||
+      chave === "financeiro-cedep-investimentos"
       ? ["itens"]
       : CAMPOS_MESCLAGEM[chave] ?? [];
     return Object.fromEntries(campos.map((campo) => {
