@@ -945,9 +945,8 @@ function App() {
         const contas = await carregarContasEstruturadas();
         if (!ativo || !contas) return;
 
-        const recebidas = contas.filter(
+        const baixadas = contas.filter(
           (conta) =>
-            conta.tipo === "receber" &&
             Boolean(conta.dataBaixa) &&
             Number(conta.valorPago ?? 0) > 0 &&
             ["Pago", "Recebido", "Parcial"].includes(conta.status)
@@ -956,46 +955,115 @@ function App() {
         setLancamentos((atuais) => {
           const reconciliados = [...atuais];
 
-          recebidas.forEach((conta) => {
-            const valorRecebido = Number(conta.valorPago ?? 0);
+          baixadas.forEach((conta) => {
+            const valorPago = Number(conta.valorPago ?? 0);
             const dataBaixa = conta.dataBaixa as string;
             const descricaoNormalizada = conta.descricao.trim().toLocaleLowerCase("pt-BR");
-            const jaExiste = reconciliados.some(
+            const indiceEquivalente = reconciliados.findIndex(
               (lancamento) =>
-                lancamento.contaId === conta.id ||
+                lancamento.data === dataBaixa &&
+                lancamento.descricao.trim().toLocaleLowerCase("pt-BR") === descricaoNormalizada &&
+                !lancamento.estornoDeId &&
                 (
-                  lancamento.entrada === valorRecebido &&
-                  lancamento.data === dataBaixa &&
-                  lancamento.descricao.trim().toLocaleLowerCase("pt-BR") === descricaoNormalizada &&
-                  !lancamento.estornoDeId
+                  conta.tipo === "receber"
+                    ? Math.abs(lancamento.entrada - valorPago) < 0.01
+                    : Math.abs(lancamento.saida - valorPago) < 0.01
                 )
             );
 
-            if (jaExiste) return;
+            if (reconciliados.some((lancamento) => lancamento.contaId === conta.id)) {
+              return;
+            }
+
+            if (indiceEquivalente >= 0) {
+              reconciliados[indiceEquivalente] = {
+                ...reconciliados[indiceEquivalente],
+                contaId: conta.id,
+              };
+              return;
+            }
+
+            if (conta.tipo === "receber") {
+              reconciliados.push({
+                id: `baixa-${conta.id}`,
+                dia: diaDaData(dataBaixa),
+                data: dataBaixa,
+                competencia: competenciaDaData(dataBaixa),
+                descricao: conta.descricao,
+                tipoEntrada: conta.categoria || "Conta Recebida",
+                tipoSaida: "",
+                formaPagamento: conta.formaPagamentoBaixa || conta.banco,
+                entrada: valorPago,
+                saida: 0,
+                unidade: conta.unidade,
+                origem: "manual",
+                contaId: conta.id,
+                parcelasCartao: conta.parcelasCartao,
+                taxaCartao: conta.taxaCartao,
+                valorLiquidoCartao: conta.valorLiquidoCartao,
+              });
+              return;
+            }
+
+            const detalhe = ((conta as Conta & { detalhamento?: Record<string, unknown> }).detalhamento ?? {});
+            const componentesProfessor =
+              conta.origem === "professor"
+                ? [
+                    ["aulas", "Aulas de professor"],
+                    ["combustivel", "Combustível"],
+                    ["pedagio", "Pedágio"],
+                    ["extras", "Atividade extra de professor"],
+                  ].map(([campo, categoria]) => ({
+                    campo,
+                    categoria,
+                    valor: Number(detalhe[campo] ?? 0),
+                  })).filter((item) => item.valor > 0)
+                : [];
+
+            if (componentesProfessor.length > 0) {
+              componentesProfessor.forEach((componente) => {
+                reconciliados.push({
+                  id: `baixa-${conta.id}-${componente.campo}`,
+                  dia: diaDaData(dataBaixa),
+                  data: dataBaixa,
+                  competencia: competenciaDaData(dataBaixa),
+                  descricao: `${conta.descricao} - ${componente.categoria}`,
+                  tipoEntrada: "",
+                  tipoSaida: componente.categoria,
+                  formaPagamento: conta.formaPagamentoBaixa || conta.banco,
+                  entrada: 0,
+                  saida: componente.valor,
+                  unidade: conta.unidade,
+                  origem: "manual",
+                  contaId: conta.id,
+                });
+              });
+              return;
+            }
+
             reconciliados.push({
               id: `baixa-${conta.id}`,
               dia: diaDaData(dataBaixa),
               data: dataBaixa,
               competencia: competenciaDaData(dataBaixa),
               descricao: conta.descricao,
-              tipoEntrada: conta.categoria || "Conta Recebida",
-              tipoSaida: "",
+              tipoEntrada: "",
+              tipoSaida: conta.categoria || "Conta Paga",
               formaPagamento: conta.formaPagamentoBaixa || conta.banco,
-              entrada: valorRecebido,
-              saida: 0,
+              entrada: 0,
+              saida: valorPago,
               unidade: conta.unidade,
               origem: "manual",
               contaId: conta.id,
-              parcelasCartao: conta.parcelasCartao,
-              taxaCartao: conta.taxaCartao,
-              valorLiquidoCartao: conta.valorLiquidoCartao,
             });
           });
 
-          return reconciliados.length === atuais.length ? atuais : reconciliados;
+          return JSON.stringify(reconciliados) === JSON.stringify(atuais)
+            ? atuais
+            : reconciliados;
         });
       } catch (erro) {
-        console.error("Não foi possível conciliar Contas a Receber com Receitas:", erro);
+        console.error("Não foi possível conciliar contas baixadas com Receitas e Despesas:", erro);
       }
     };
 
