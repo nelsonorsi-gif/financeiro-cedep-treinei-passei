@@ -1005,7 +1005,7 @@ function App() {
               return;
             }
 
-            const detalhe = (conta.detalhamento ?? {}) as Record<string, unknown>;
+            const detalhe = ((conta as Conta & { detalhamento?: Record<string, unknown> }).detalhamento ?? {});
             const componentesProfessor =
               conta.origem === "professor"
                 ? [
