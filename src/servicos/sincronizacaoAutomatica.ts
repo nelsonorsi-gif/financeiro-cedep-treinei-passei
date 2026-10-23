@@ -409,8 +409,19 @@ export async function prepararSincronizacaoInicial(
   const cliente =
     clienteObrigatorio();
 
+  const lancamentosLocaisAntes =
+    lerValorLocal(
+      CHAVE_LANCAMENTOS
+    );
   const lancamentosNuvem =
     await carregarLancamentosEstruturados();
+  const alterouLancamentos =
+    serializar(
+      lancamentosLocaisAntes
+    ) !==
+    serializar(
+      lancamentosNuvem
+    );
   salvarValorLocal(
     CHAVE_LANCAMENTOS,
     lancamentosNuvem
@@ -492,7 +503,7 @@ export async function prepararSincronizacaoInicial(
     return false;
   }
 
-  let alterou = false;
+  let alterou = alterouLancamentos;
 
   for (const registro of registros) {
     const valorAtual =
