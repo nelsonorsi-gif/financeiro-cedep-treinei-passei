@@ -94,13 +94,37 @@ const mapaLancamentos = (valor: unknown) =>
 
 const carregarLancamentosEstruturados = async () => {
   const cliente = clienteObrigatorio();
-  const { data, error } = await cliente
-    .from("lancamentos_financeiros")
-    .select("id, dados, atualizado_em")
-    .is("excluido_em", null)
-    .order("atualizado_em", { ascending: true });
-  if (error) throw error;
-  return (data ?? []).map((registro) => registro.dados);
+  const tamanhoPagina = 1000;
+  const lancamentos: unknown[] = [];
+  let inicio = 0;
+
+  while (true) {
+    const { data, error } = await cliente
+      .from("lancamentos_financeiros")
+      .select("id, dados, atualizado_em")
+      .is("excluido_em", null)
+      .order("atualizado_em", { ascending: true })
+      .order("id", { ascending: true })
+      .range(
+        inicio,
+        inicio + tamanhoPagina - 1
+      );
+    if (error) throw error;
+
+    const pagina = data ?? [];
+    lancamentos.push(
+      ...pagina.map(
+        (registro) => registro.dados
+      )
+    );
+
+    if (pagina.length < tamanhoPagina) {
+      break;
+    }
+    inicio += tamanhoPagina;
+  }
+
+  return lancamentos;
 };
 
 const salvarDiferencasLancamentos = async (
