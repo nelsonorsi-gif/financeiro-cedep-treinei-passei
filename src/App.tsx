@@ -1888,7 +1888,7 @@ function App() {
 
                 novosLancamentos.push(
                   {
-                    id: `${arquivo.name}-${nomeAba}-${indice}-${Date.now()}-${Math.random()}`,
+                    id: `excel-${arquivo.name.trim().toLowerCase()}-${nomeAba}-${indice}`,
 
                     dia:
                       nomeAba,
