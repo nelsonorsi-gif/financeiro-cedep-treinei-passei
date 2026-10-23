@@ -10,7 +10,6 @@ import {
 } from "./contasEstruturadas";
 
 const CHAVES_COMPARTILHADAS = [
-  "financeiro-cedep-lancamentos",
   "financeiro-cedep-importacoes",
   "financeiro-cedep-configuracoes",
   "financeiro-cedep-cadastros",
@@ -75,6 +74,64 @@ const lerValorLocal = (
 const serializar = (
   valor: unknown
 ) => JSON.stringify(valor);
+
+const CHAVE_LANCAMENTOS =
+  "financeiro-cedep-lancamentos";
+
+type LancamentoGenerico = {
+  id?: string;
+  [campo: string]: unknown;
+};
+
+const mapaLancamentos = (valor: unknown) =>
+  new Map(
+    (Array.isArray(valor) ? valor : [])
+      .filter((item): item is LancamentoGenerico =>
+        Boolean(item && typeof item === "object" && item.id)
+      )
+      .map((item) => [item.id as string, item])
+  );
+
+const carregarLancamentosEstruturados = async () => {
+  const cliente = clienteObrigatorio();
+  const { data, error } = await cliente
+    .from("lancamentos_financeiros")
+    .select("id, dados, atualizado_em")
+    .is("excluido_em", null)
+    .order("atualizado_em", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((registro) => registro.dados);
+};
+
+const salvarDiferencasLancamentos = async (
+  anteriores: Map<string, LancamentoGenerico>,
+  valorAtual: unknown,
+  usuarioId: string
+) => {
+  const atuais = mapaLancamentos(valorAtual);
+  const alterados = Array.from(atuais.entries())
+    .filter(([id, item]) =>
+      serializar(anteriores.get(id)) !== serializar(item)
+    )
+    .map(([, item]) => item);
+  const excluidos = Array.from(anteriores.keys())
+    .filter((id) => !atuais.has(id));
+
+  if (alterados.length === 0 && excluidos.length === 0) {
+    return atuais;
+  }
+
+  const { error } = await clienteObrigatorio().rpc(
+    "sincronizar_lancamentos_financeiros",
+    {
+      p_itens: alterados,
+      p_excluidos: excluidos,
+      p_updated_by: usuarioId,
+    }
+  );
+  if (error) throw error;
+  return atuais;
+};
 
 type ItemComId = {
   id?: string;
@@ -351,6 +408,14 @@ export async function prepararSincronizacaoInicial(
 ) {
   const cliente =
     clienteObrigatorio();
+
+  const lancamentosNuvem =
+    await carregarLancamentosEstruturados();
+  salvarValorLocal(
+    CHAVE_LANCAMENTOS,
+    lancamentosNuvem
+  );
+
   const contasNuvem =
     await carregarContasEstruturadas();
   if (contasNuvem) {
@@ -500,6 +565,12 @@ export function iniciarSincronizacaoAutomatica(
         "financeiro-cedep-contas"
       )
     );
+  let lancamentosConhecidos =
+    mapaLancamentos(
+      lerValorLocal(
+        CHAVE_LANCAMENTOS
+      )
+    );
 
   CHAVES_COMPARTILHADAS.forEach(
     (chave) => {
@@ -535,6 +606,31 @@ export function iniciarSincronizacaoAutomatica(
         usuarioId,
         perfil,
       });
+    }
+
+    const lancamentosAtuais =
+      lerValorLocal(
+        CHAVE_LANCAMENTOS
+      );
+    const mapaAtual =
+      mapaLancamentos(
+        lancamentosAtuais
+      );
+    const temDiferencasLancamentos =
+      mapaAtual.size !== lancamentosConhecidos.size ||
+      Array.from(mapaAtual.entries()).some(
+        ([id, item]) =>
+          serializar(lancamentosConhecidos.get(id)) !==
+          serializar(item)
+      );
+
+    if (temDiferencasLancamentos) {
+      lancamentosConhecidos =
+        await salvarDiferencasLancamentos(
+          lancamentosConhecidos,
+          lancamentosAtuais,
+          usuarioId
+        );
     }
 
     const alterados =
@@ -656,6 +752,73 @@ export function iniciarSincronizacaoAutomatica(
       2000
     );
 
+  const canalLancamentos = cliente
+    .channel(
+      "lancamentos-financeiros-por-registro"
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "lancamentos_financeiros",
+      },
+      (evento) => {
+        const novo = evento.new as {
+          id?: string;
+          dados?: LancamentoGenerico;
+          excluido_em?: string | null;
+        };
+        const anterior = evento.old as {
+          id?: string;
+        };
+        const id = novo.id ?? anterior.id;
+        if (!id) return;
+
+        const valorLocal =
+          mapaLancamentos(
+            lerValorLocal(
+              CHAVE_LANCAMENTOS
+            )
+          );
+
+        if (novo.excluido_em || !novo.dados) {
+          valorLocal.delete(id);
+          lancamentosConhecidos.delete(id);
+        } else {
+          valorLocal.set(id, novo.dados);
+          lancamentosConhecidos.set(id, novo.dados);
+        }
+
+        const valorAplicado =
+          Array.from(valorLocal.values());
+        salvarValorLocal(
+          CHAVE_LANCAMENTOS,
+          valorAplicado
+        );
+        window.dispatchEvent(
+          new CustomEvent(
+            EVENTO_SINCRONIZACAO_REMOTA,
+            {
+              detail: {
+                chave: CHAVE_LANCAMENTOS,
+                valor: valorAplicado,
+              },
+            }
+          )
+        );
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: CHAVE_LANCAMENTOS,
+            newValue: JSON.stringify(
+              valorAplicado
+            ),
+          })
+        );
+      }
+    )
+    .subscribe();
+
   const canal = cliente
     .channel(
       "erp-dados-compartilhados"
@@ -757,6 +920,9 @@ export function iniciarSincronizacaoAutomatica(
     );
     void cliente.removeChannel(
       canal
+    );
+    void cliente.removeChannel(
+      canalLancamentos
     );
   };
 }
