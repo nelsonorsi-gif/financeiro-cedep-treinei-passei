@@ -732,9 +732,19 @@ export function iniciarSincronizacaoAutomatica(
       }
 
       if (comuns.length > 0) {
+        const registrosComuns =
+          comuns.map(
+            ({
+              remocoes: _remocoes,
+              ...registro
+            }) => registro
+          );
         const resultado = await cliente
           .from("erp_dados")
-          .upsert(comuns, { onConflict: "chave" });
+          .upsert(
+            registrosComuns,
+            { onConflict: "chave" }
+          );
         if (resultado.error) throw resultado.error;
         comuns.forEach((item) => {
           conhecidos.set(item.chave, serializar(item.valor));
