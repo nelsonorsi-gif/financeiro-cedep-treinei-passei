@@ -507,7 +507,7 @@ function Secretaria({
     const movimentoRegistrado = registrarMovimentoCaixa(usuarioAtual, {
       natureza: "entrada", origem: "secretaria", origemId: recebimento.id,
       descricao: recebimento.descricao, tipoEntrada: recebimento.tipoEntrada, valor: recebimento.valor,
-      formaPagamento: recebimento.formaPagamento, modalidadeCartao: recebimento.modalidadeCartao, parcelasCartao: recebimento.parcelasCartao, taxaCartao: recebimento.taxaCartao, valorLiquido: recebimento.valorLiquidoCartao, alunoId: recebimento.alunoId, alunoNome: recebimento.alunoNome,
+      formaPagamento: recebimento.formaPagamento, unidade: recebimento.unidade, modalidadeCartao: recebimento.modalidadeCartao, parcelasCartao: recebimento.parcelasCartao, taxaCartao: recebimento.taxaCartao, valorLiquido: recebimento.valorLiquidoCartao, alunoId: recebimento.alunoId, alunoNome: recebimento.alunoNome,
     });
 
     onRegistrarReceita({
@@ -765,7 +765,7 @@ function Secretaria({
           <td>${escapar(movimento.formaPagamento)}</td>
           <td class="entrada">${entrada ? escapar(moeda(movimento.valor)) : ""}</td>
           <td class="saida">${!entrada ? escapar(moeda(movimento.valor)) : ""}</td>
-          <td>${escapar(caixaVisualizado.unidade)}</td>
+          <td>${escapar(movimento.unidade || caixaVisualizado.unidade)}</td>
         </tr>`;
       })
       .join("");
@@ -1225,7 +1225,7 @@ function Secretaria({
                           <td style={{ ...estilos.td, color: "#b91c1c", fontWeight: 700 }}>
                             {!entrada ? moeda(movimento.valor) : ""}
                           </td>
-                          <td style={estilos.td}>{caixaVisualizado.unidade}</td>
+                          <td style={estilos.td}>{movimento.unidade || caixaVisualizado.unidade}</td>
                           {podeAlterarMovimentos && (
                             <td style={estilos.td}>
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

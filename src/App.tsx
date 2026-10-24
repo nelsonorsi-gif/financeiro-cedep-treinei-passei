@@ -2153,6 +2153,7 @@ function App() {
         tipoSaida: tipo === "Saída" ? formulario.tipoSaida : "",
         valor,
         formaPagamento: formulario.formaPagamento,
+        unidade: formulario.unidade,
         modalidadeCartao: cartao.modalidade ?? undefined,
         parcelasCartao: cartao.parcelas,
         taxaCartao: cartao.taxa,
@@ -2281,6 +2282,7 @@ function App() {
             tipoSaida: "Taxas de cartão",
             valor: cartao.taxa,
             formaPagamento: formulario.formaPagamento,
+            unidade: formulario.unidade,
             modalidadeCartao: cartao.modalidade ?? undefined,
             parcelasCartao: cartao.parcelas,
           });
@@ -2522,6 +2524,7 @@ function App() {
       tipoSaida: lancamento.entrada > 0 ? (lancamento.tipoEntrada || "Receita") : "",
       valor: Math.max(lancamento.entrada, lancamento.saida),
       formaPagamento: lancamento.formaPagamento,
+      unidade: lancamento.unidade,
       estornoDeId: lancamento.movimentoCaixaId,
       motivoEstorno: motivo.trim(),
     });
