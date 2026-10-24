@@ -20,6 +20,7 @@ export type MovimentoCaixa = {
   tipoSaida?: string;
   valor: number;
   formaPagamento: string;
+  unidade?: string;
   dataHora: string;
   usuarioId: string;
   usuarioNome: string;
@@ -188,6 +189,7 @@ export const registrarEstornoCaixa = ({
     tipoSaida: original.tipoEntrada,
     valor: original.valor,
     formaPagamento: original.formaPagamento,
+    unidade: original.unidade,
     alunoId: original.alunoId,
     alunoNome: original.alunoNome,
     estornoDeId: original.id,
