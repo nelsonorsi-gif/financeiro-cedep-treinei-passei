@@ -117,6 +117,20 @@ type Lancamento = {
   reclassificadoPorNome?: string;
   reclassificadoEm?: string;
   motivoReclassificacao?: string;
+  historicoEdicoes?: Array<{
+    dataHora: string;
+    usuarioId: string;
+    usuarioNome: string;
+    dadosAnteriores: {
+      data: string;
+      descricao: string;
+      valor: number;
+      tipoEntrada: string;
+      tipoSaida: string;
+      formaPagamento: string;
+      unidade: string;
+    };
+  }>;
 };
 
 const carregarDespesasPessoais =
@@ -2130,6 +2144,69 @@ function App() {
         setFormulario(criarFormularioVazio());
         setLancamentoEditando(null);
         setClassificacaoEdicao("empresarial");
+        return;
+      }
+
+      if (lancamentoEditando) {
+        const original = lancamentos.find((item) => item.id === lancamentoEditando);
+        if (!original) {
+          alert("O lançamento selecionado não foi encontrado.");
+          return;
+        }
+
+        const podeEditarTodosOsCampos = usuarioAtual.perfil === "Administrador";
+        const valorOriginal = original.entrada > 0 ? original.entrada : original.saida;
+        const historico = {
+          dataHora: new Date().toISOString(),
+          usuarioId: usuarioAtual.id,
+          usuarioNome: usuarioAtual.nome,
+          dadosAnteriores: {
+            data: original.data,
+            descricao: original.descricao,
+            valor: valorOriginal,
+            tipoEntrada: original.tipoEntrada,
+            tipoSaida: original.tipoSaida,
+            formaPagamento: original.formaPagamento,
+            unidade: original.unidade,
+          },
+        };
+
+        const atualizado: Lancamento = {
+          ...original,
+          ...(podeEditarTodosOsCampos
+            ? {
+                data: formulario.data,
+                dia: diaDaData(formulario.data),
+                competencia: competenciaDaData(formulario.data),
+                descricao,
+                tipoEntrada: tipo === "Entrada" ? formulario.tipoEntrada : "",
+                tipoSaida: tipo === "Saída" ? formulario.tipoSaida : "",
+                formaPagamento: formulario.formaPagamento,
+                entrada: tipo === "Entrada" ? valor : 0,
+                saida: tipo === "Saída" ? valor : 0,
+              }
+            : {}),
+          unidade: formulario.unidade,
+          historicoEdicoes: [...(original.historicoEdicoes ?? []), historico],
+        };
+
+        setLancamentos((dadosAtuais) =>
+          dadosAtuais.map((item) => {
+            if (item.id === original.id) return atualizado;
+            if (item.id === "taxa-cartao-" + original.id) {
+              return { ...item, unidade: formulario.unidade };
+            }
+            return item;
+          })
+        );
+        setFormulario(criarFormularioVazio());
+        setLancamentoEditando(null);
+        setClassificacaoEdicao("empresarial");
+        alert(
+          podeEditarTodosOsCampos
+            ? "Lançamento atualizado sem criar nova movimentação no caixa."
+            : "Unidade atualizada sem criar nova receita ou movimentação no caixa."
+        );
         return;
       }
 
