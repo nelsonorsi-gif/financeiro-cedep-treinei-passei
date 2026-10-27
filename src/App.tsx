@@ -49,6 +49,7 @@ import {
 } from "./lib/supabase";
 import {
   EVENTO_SINCRONIZACAO_REMOTA,
+  carregarLancamentosEstruturados,
   iniciarSincronizacaoAutomatica,
   prepararSincronizacaoInicial,
 } from "./servicos/sincronizacaoAutomatica";
@@ -2031,7 +2032,7 @@ function App() {
   };
 
   const confirmarImportacao =
-    () => {
+    async () => {
       if (
         preVisualizacao.length ===
           0 ||
@@ -2040,64 +2041,97 @@ function App() {
         return;
       }
 
-      setLancamentos(
-        (dadosAtuais) => [
-          ...dadosAtuais,
-          ...filtrarSomenteLancamentosAusentes(
-            dadosAtuais,
-            preVisualizacao
-          ),
-        ]
+      setMensagem(
+        "Conferindo novamente com o banco antes de salvar..."
       );
 
-      setImportacoes(
-        (dadosAtuais) => {
-          const registroAtualizado = {
-            nomeArquivo:
-              arquivoNome,
+      let lancamentosConfirmados =
+        lancamentos;
 
-            dataImportacao:
-              new Date().toLocaleString(
-                "pt-BR"
-              ),
-          };
-
-          const indiceExistente =
-            dadosAtuais.findIndex(
-              (item) =>
-                item.nomeArquivo
-                  .trim()
-                  .toLocaleLowerCase(
-                    "pt-BR"
-                  ) ===
-                arquivoNome
-                  .trim()
-                  .toLocaleLowerCase(
-                    "pt-BR"
-                  )
-            );
-
-          if (
-            indiceExistente === -1
-          ) {
-            return [
-              ...dadosAtuais,
-              registroAtualizado,
-            ];
-          }
-
-          return dadosAtuais.map(
-            (item, indice) =>
-              indice ===
-              indiceExistente
-                ? registroAtualizado
-                : item
+      if (
+        supabaseConfigurado
+      ) {
+        try {
+          lancamentosConfirmados =
+            (await carregarLancamentosEstruturados()) as Lancamento[];
+        } catch (erro) {
+          console.error(
+            "Erro ao conferir importação no banco:",
+            erro
           );
+          setMensagem(
+            "Não foi possível conferir os dados diretamente no banco. Nenhum lançamento foi incluído. Aguarde alguns segundos e tente novamente."
+          );
+          return;
         }
-      );
+      }
+
+      const itensAindaAusentes =
+        filtrarSomenteLancamentosAusentes(
+          lancamentosConfirmados,
+          preVisualizacao
+        );
+
+      setLancamentos([
+        ...lancamentosConfirmados,
+        ...itensAindaAusentes,
+      ]);
+
+      if (
+        itensAindaAusentes.length >
+        0
+      ) {
+        setImportacoes(
+          (dadosAtuais) => {
+            const registroAtualizado = {
+              nomeArquivo:
+                arquivoNome,
+
+              dataImportacao:
+                new Date().toLocaleString(
+                  "pt-BR"
+                ),
+            };
+
+            const indiceExistente =
+              dadosAtuais.findIndex(
+                (item) =>
+                  item.nomeArquivo
+                    .trim()
+                    .toLocaleLowerCase(
+                      "pt-BR"
+                    ) ===
+                  arquivoNome
+                    .trim()
+                    .toLocaleLowerCase(
+                      "pt-BR"
+                    )
+              );
+
+            if (
+              indiceExistente === -1
+            ) {
+              return [
+                ...dadosAtuais,
+                registroAtualizado,
+              ];
+            }
+
+            return dadosAtuais.map(
+              (item, indice) =>
+                indice ===
+                indiceExistente
+                  ? registroAtualizado
+                  : item
+            );
+          }
+        );
+      }
 
       setMensagem(
-        `${preVisualizacao.length} lançamento(s) ausente(s) incluído(s) com sucesso, sem duplicar os registros existentes.`
+        itensAindaAusentes.length === 0
+          ? "Conferência final concluída: todos esses lançamentos já estavam no banco. Nenhuma cópia foi criada."
+          : `${itensAindaAusentes.length} lançamento(s) realmente ausente(s) incluído(s) com sucesso. Os demais foram ignorados para evitar duplicação.`
       );
 
       setPreVisualizacao(
