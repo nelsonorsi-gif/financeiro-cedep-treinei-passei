@@ -92,7 +92,7 @@ const mapaLancamentos = (valor: unknown) =>
       .map((item) => [item.id as string, item])
   );
 
-const carregarLancamentosEstruturados = async () => {
+export const carregarLancamentosEstruturados = async () => {
   const cliente = clienteObrigatorio();
   const tamanhoPagina = 1000;
   const lancamentos: unknown[] = [];
