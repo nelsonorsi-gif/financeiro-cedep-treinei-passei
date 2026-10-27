@@ -330,11 +330,27 @@ const reconciliarMovimentosDoCaixa = (
     });
 
     if (indiceExistente >= 0) {
-      if (!reconciliados[indiceExistente].movimentoCaixaId) {
+      const existente =
+        reconciliados[indiceExistente];
+      const unidadeMovimento =
+        normalizarUnidade(
+          movimento.unidade ||
+            unidade
+        );
+
+      if (
+        !existente.movimentoCaixaId ||
+        normalizarUnidade(
+          existente.unidade
+        ) !== unidadeMovimento
+      ) {
         reconciliados[indiceExistente] = {
-          ...reconciliados[indiceExistente],
+          ...existente,
+          unidade:
+            unidadeMovimento,
           caixaId,
-          movimentoCaixaId: movimento.id,
+          movimentoCaixaId:
+            movimento.id,
         };
       }
       return;
@@ -361,7 +377,10 @@ const reconciliarMovimentosDoCaixa = (
       formaPagamento: movimento.formaPagamento,
       entrada: movimento.natureza === "entrada" ? valor : 0,
       saida: movimento.natureza === "saida" ? valor : 0,
-      unidade: normalizarUnidade(unidade),
+      unidade: normalizarUnidade(
+        movimento.unidade ||
+          unidade
+      ),
       origem: "manual",
       usuarioResponsavelId: movimento.usuarioId,
       usuarioResponsavelNome: movimento.usuarioNome,
