@@ -495,6 +495,53 @@ const detectarMesAnoArquivo = (
   };
 };
 
+const normalizarTextoImportacao = (valor: string) =>
+  String(valor ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLocaleUpperCase("pt-BR");
+
+const chaveComparacaoImportacao = (lancamento: Lancamento) =>
+  [
+    lancamento.data,
+    normalizarTextoImportacao(lancamento.descricao),
+    normalizarTextoImportacao(lancamento.tipoEntrada),
+    normalizarTextoImportacao(lancamento.tipoSaida),
+    normalizarTextoImportacao(lancamento.formaPagamento),
+    Number(lancamento.entrada || 0).toFixed(2),
+    Number(lancamento.saida || 0).toFixed(2),
+    normalizarTextoImportacao(lancamento.unidade),
+  ].join("|");
+
+const filtrarSomenteLancamentosAusentes = (
+  existentes: Lancamento[],
+  encontrados: Lancamento[]
+) => {
+  const quantidadesExistentes = new Map<string, number>();
+
+  existentes.forEach((lancamento) => {
+    const chave = chaveComparacaoImportacao(lancamento);
+    quantidadesExistentes.set(
+      chave,
+      (quantidadesExistentes.get(chave) ?? 0) + 1
+    );
+  });
+
+  return encontrados.filter((lancamento) => {
+    const chave = chaveComparacaoImportacao(lancamento);
+    const quantidadeDisponivel = quantidadesExistentes.get(chave) ?? 0;
+
+    if (quantidadeDisponivel > 0) {
+      quantidadesExistentes.set(chave, quantidadeDisponivel - 1);
+      return false;
+    }
+
+    return true;
+  });
+};
+
 /* =========================================================
    FORMULÁRIO PADRÃO
 ========================================================= */
@@ -1764,21 +1811,6 @@ function App() {
       return;
     }
 
-    const jaImportado =
-      importacoes.some(
-        (item) =>
-          item.nomeArquivo.toLowerCase() ===
-          arquivo.name.toLowerCase()
-      );
-
-    if (jaImportado) {
-      setMensagem(
-        "Este arquivo já foi importado anteriormente. A importação foi bloqueada para evitar duplicidade."
-      );
-
-      return;
-    }
-
     const leitor =
       new FileReader();
 
@@ -1936,10 +1968,6 @@ function App() {
           }
         );
 
-        setPreVisualizacao(
-          novosLancamentos
-        );
-
         if (
           novosLancamentos.length ===
           0
@@ -1951,8 +1979,33 @@ function App() {
           return;
         }
 
+        const lancamentosAusentes =
+          filtrarSomenteLancamentosAusentes(
+            lancamentos,
+            novosLancamentos
+          );
+
+        const quantidadeJaRegistrada =
+          novosLancamentos.length -
+          lancamentosAusentes.length;
+
+        setPreVisualizacao(
+          lancamentosAusentes
+        );
+
+        if (
+          lancamentosAusentes.length ===
+          0
+        ) {
+          setMensagem(
+            `Conferência concluída: os ${novosLancamentos.length} lançamentos de ${periodoArquivo.mes}/${periodoArquivo.ano} já estão registrados. Nenhum lançamento foi duplicado.`
+          );
+
+          return;
+        }
+
         setMensagem(
-          `${novosLancamentos.length} lançamentos encontrados para ${periodoArquivo.mes}/${periodoArquivo.ano}. Confira os valores e confirme a importação.`
+          `Conferência concluída para ${periodoArquivo.mes}/${periodoArquivo.ano}: ${novosLancamentos.length} linha(s) lida(s), ${quantidadeJaRegistrada} já registrada(s) e ${lancamentosAusentes.length} ausente(s). Confira apenas os itens ausentes e confirme a importação.`
         );
       } catch (erro) {
         console.error(
@@ -1990,16 +2043,16 @@ function App() {
       setLancamentos(
         (dadosAtuais) => [
           ...dadosAtuais,
-
-          ...preVisualizacao,
+          ...filtrarSomenteLancamentosAusentes(
+            dadosAtuais,
+            preVisualizacao
+          ),
         ]
       );
 
       setImportacoes(
-        (dadosAtuais) => [
-          ...dadosAtuais,
-
-          {
+        (dadosAtuais) => {
+          const registroAtualizado = {
             nomeArquivo:
               arquivoNome,
 
@@ -2007,12 +2060,44 @@ function App() {
               new Date().toLocaleString(
                 "pt-BR"
               ),
-          },
-        ]
+          };
+
+          const indiceExistente =
+            dadosAtuais.findIndex(
+              (item) =>
+                item.nomeArquivo
+                  .trim()
+                  .toLocaleLowerCase(
+                    "pt-BR"
+                  ) ===
+                arquivoNome
+                  .trim()
+                  .toLocaleLowerCase(
+                    "pt-BR"
+                  )
+            );
+
+          if (
+            indiceExistente === -1
+          ) {
+            return [
+              ...dadosAtuais,
+              registroAtualizado,
+            ];
+          }
+
+          return dadosAtuais.map(
+            (item, indice) =>
+              indice ===
+              indiceExistente
+                ? registroAtualizado
+                : item
+          );
+        }
       );
 
       setMensagem(
-        "Importação confirmada e salva com sucesso."
+        `${preVisualizacao.length} lançamento(s) ausente(s) incluído(s) com sucesso, sem duplicar os registros existentes.`
       );
 
       setPreVisualizacao(
