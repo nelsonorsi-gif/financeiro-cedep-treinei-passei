@@ -449,6 +449,25 @@ const mesclarLancamentosSemDuplicarMovimento = (
     return [...preparado, novo];
   }, atuais);
 
+const ordenarLancamentosPorDataEfetiva = (
+  itens: Lancamento[]
+) =>
+  [...itens].sort((a, b) => {
+    const comparacaoData =
+      (b.data || "").localeCompare(
+        a.data || ""
+      );
+
+    if (comparacaoData !== 0) {
+      return comparacaoData;
+    }
+
+    return b.id.localeCompare(
+      a.id,
+      "pt-BR"
+    );
+  });
+
 /* =========================================================
    IDENTIFICAR MÊS E ANO DO ARQUIVO
 ========================================================= */
@@ -3366,9 +3385,9 @@ function App() {
   const lancamentosOrdenados =
     useMemo(
       () =>
-        [
-          ...lancamentosFiltrados,
-        ].reverse(),
+        ordenarLancamentosPorDataEfetiva(
+          lancamentosFiltrados
+        ),
       [lancamentosFiltrados]
     );
 
@@ -4495,9 +4514,9 @@ function App() {
                 </p>
               ) : (
                 <Tabela
-                  lancamentos={[
-                    ...receitasFiltradas,
-                  ].reverse()}
+                  lancamentos={ordenarLancamentosPorDataEfetiva(
+                    receitasFiltradas
+                  )}
                   paginar
                   rotuloData="Data do recebimento"
 
@@ -4607,9 +4626,9 @@ function App() {
                 </p>
               ) : (
                 <Tabela
-                  lancamentos={[
-                    ...despesasFiltradas,
-                  ].reverse()}
+                  lancamentos={ordenarLancamentosPorDataEfetiva(
+                    despesasFiltradas
+                  )}
                   paginar
                   rotuloData="Data do pagamento"
 
@@ -4913,9 +4932,9 @@ function App() {
                     </div>
                   ) : (
                     <Tabela
-                      lancamentos={[
-                        ...movimentacoesBanco,
-                      ].reverse()}
+                      lancamentos={ordenarLancamentosPorDataEfetiva(
+                        movimentacoesBanco
+                      )}
 
                       paginar
 
