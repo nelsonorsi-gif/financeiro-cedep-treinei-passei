@@ -256,6 +256,15 @@ function Relatorios({
             correspondePeriodo
           );
         }
+      ).sort(
+        (a, b) =>
+          (b.data || "").localeCompare(
+            a.data || ""
+          ) ||
+          b.id.localeCompare(
+            a.id,
+            "pt-BR"
+          )
       );
     }, [
       lancamentos,
